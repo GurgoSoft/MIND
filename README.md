@@ -66,6 +66,6 @@ MIND/
 └── mobile/                  # Proyecto React Native con Expo
     └── mind-frontend/
         ├── app/             # Pantallas y navegación
-        ├── assets/          # Logos, splash, íconos
+        ├── assets/          # Logos e íconos
         ├── package.json
         └── app.json
