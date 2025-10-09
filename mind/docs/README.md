@@ -4,6 +4,24 @@ Sistema de microservicios escalable desarrollado en Node.js para la gestión int
 
 ## Inicio Rapido
 
+### Configuración (rápida - desarrollo)
+
+- Terminal 1: iniciar nodemon y el microservicio de Usuarios
+
+```powershell
+cd mind\mind
+npm install
+npm run dev:users
+```
+
+- Terminal 2: iniciar el Frontend (Expo Web)
+
+```powershell
+cd mind\mind\mind-frontend
+npm install
+npm start
+```
+
 ### Instalacion
 ```bash
 npm install
@@ -58,6 +76,53 @@ node scripts/jwt-toggle.js status
 2. **Crear datos base** sin necesidad de autenticación
 3. **Activar JWT** para testing completo con seguridad
 4. **Testear endpoints** con tokens de autenticación
+
+### Semilla: Crear SuperAdministrador inicial
+
+Para entrar a la vista de administración necesitas un usuario con rol SUPERADMIN. Hemos agregado un script de semilla para crearlo rápido.
+
+1) Desactiva JWT temporalmente (para no requerir token al crear datos):
+
+```powershell
+cd mind\mind
+node scripts\jwt-toggle.js disable
+```
+
+2) Establece (opcional) variables para personalizar el usuario inicial en `.env`:
+
+```env
+# Opcionales (tienen valores por defecto)
+SEED_SUPERADMIN_EMAIL=superadmin@mind.com
+SEED_SUPERADMIN_PASSWORD=admin1234
+SEED_SUPERADMIN_TELEFONO=
+SEED_SUPERADMIN_NOMBRES=Super
+SEED_SUPERADMIN_APELLIDOS=Administrador
+SEED_SUPERADMIN_TIPODOC=CC
+SEED_SUPERADMIN_NUMDOC=9999999999
+SEED_SUPERADMIN_FECHA_NAC=1990-01-01
+
+# Si quieres forzar cambiar la contraseña si ya existe el usuario
+SEED_RESET_PASSWORD=false
+```
+
+3) Ejecuta la semilla desde la raíz del proyecto:
+
+```powershell
+cd mind\mind
+npm run seed:superadmin
+```
+
+Esto creará (o actualizará) los roles SUPERADMIN, ADMIN y USER; una persona base y un usuario SUPERADMIN con el email y contraseña definidos.
+
+4) Reactiva JWT y reinicia los microservicios:
+
+```powershell
+node scripts\jwt-toggle.js enable
+# Reinicia los servicios, por ejemplo:
+npm run dev:users
+```
+
+5) Inicia sesión en el frontend con el SUPERADMIN y crea más administradores desde la vista de administración.
 
 ### Ejecutar Microservicios
 
