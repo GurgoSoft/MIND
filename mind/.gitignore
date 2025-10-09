@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+
+
+# directorios de dependencias
+node_modules/
+jspm_packages/
+
+# npms de cache
+.npm
+
+
+#.env
+.env.development.local
+.env.local
+
+#Next.js build 
+.next
+out
+
+# MongoDB data
+data/
+mongo-data/
+
+
+# Archivos especificos de app
+uploads/
+temp/
+tmp/
+*.tmp
+
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+
+# Build artifacts
+build/
+dist/
+
+
