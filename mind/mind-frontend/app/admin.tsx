@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, FlatList, Modal, Alert, StatusBar, SafeAreaView, RefreshControl, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, FlatList, Modal, Alert, StatusBar, SafeAreaView, RefreshControl, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { listUsers, listEstados, listAccesos, listNotificaciones, filterEstados, createEstado, updateEstado, deleteEstado, listTiposUsuario, createAcceso, updateAcceso, deleteAcceso, createNotificacion, updateNotificacion, deleteNotificacion, register, updateUser } from '../services/api';
@@ -209,6 +209,8 @@ const UserDetailsModal = ({ visible, user, onClose, onUpdateStatus, onChangeRole
 
 // Componente principal
 export default function UserManagementSystem() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<AdminUser[]>([]);
   const [searchText, setSearchText] = useState('');
@@ -460,10 +462,10 @@ export default function UserManagementSystem() {
           ) : null}
 
       {section === 'usuarios' && (
-        <>
+        <View style={{ flex: 1 }}>
           {/* Search Bar */}
           <View style={styles.searchContainer}>
-            <View style={styles.searchBar}>
+            <View style={[styles.searchBar, styles.searchBarWide]}>
               <Ionicons name="search" size={20} color="#666" />
               <TextInput
                 style={styles.searchInput}
@@ -472,46 +474,72 @@ export default function UserManagementSystem() {
                 onChangeText={setSearchText}
               />
             </View>
-            <View style={styles.userActionsRow}>
-              <TouchableOpacity style={[styles.tableFilterButton, { backgroundColor: '#6B5B95' }]} onPress={() => setCreateUserOpen(true)}>
-                <Text style={{ color: '#fff', fontWeight: '700' }}>+ Adicionar Usuario</Text>
+            <View style={[styles.userActionsRow, isDesktop && styles.userActionsRowWide]}>
+              <TouchableOpacity style={styles.primaryButtonSm} onPress={() => setCreateUserOpen(true)}>
+                <Text style={styles.primaryButtonSmText}>+ Adicionar Usuario</Text>
               </TouchableOpacity>
+              {isDesktop ? (
+                <View style={[styles.chipsWrapRow, { flex: 1 }]}>
+                  <TouchableOpacity
+                    style={[styles.filterChip, selectedFilter === 'all' && styles.filterChipActive]}
+                    onPress={() => setSelectedFilter('all')}
+                  >
+                    <Text style={[styles.filterChipText, selectedFilter === 'all' && styles.filterChipTextActive]}>
+                      Todos
+                    </Text>
+                  </TouchableOpacity>
+                  {Object.entries(USER_STATES).map(([id, state]) => (
+                    <TouchableOpacity
+                      key={id}
+                      style={[
+                        styles.filterChip,
+                        selectedFilter === id && styles.filterChipActive,
+                        selectedFilter === id && { backgroundColor: state.color }
+                      ]}
+                      onPress={() => setSelectedFilter(id)}
+                    >
+                      <Text style={[
+                        styles.filterChipText,
+                        selectedFilter === id && styles.filterChipTextActive
+                      ]}>
+                        {state.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow} style={styles.chipsInlineScroll}>
+                  <TouchableOpacity
+                    style={[styles.filterChip, selectedFilter === 'all' && styles.filterChipActive]}
+                    onPress={() => setSelectedFilter('all')}
+                  >
+                    <Text style={[styles.filterChipText, selectedFilter === 'all' && styles.filterChipTextActive]}>
+                      Todos
+                    </Text>
+                  </TouchableOpacity>
+                  {Object.entries(USER_STATES).map(([id, state]) => (
+                    <TouchableOpacity
+                      key={id}
+                      style={[
+                        styles.filterChip,
+                        selectedFilter === id && styles.filterChipActive,
+                        selectedFilter === id && { backgroundColor: state.color }
+                      ]}
+                      onPress={() => setSelectedFilter(id)}
+                    >
+                      <Text style={[
+                        styles.filterChipText,
+                        selectedFilter === id && styles.filterChipTextActive
+                      ]}>
+                        {state.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           </View>
 
-          {/* Filter Chips */}
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-          >
-            <TouchableOpacity
-              style={[styles.filterChip, selectedFilter === 'all' && styles.filterChipActive]}
-              onPress={() => setSelectedFilter('all')}
-            >
-              <Text style={[styles.filterChipText, selectedFilter === 'all' && styles.filterChipTextActive]}>
-                Todos
-              </Text>
-            </TouchableOpacity>
-            {/* Mantener chips locales según USER_STATES para consistencia visual */}
-            {Object.entries(USER_STATES).map(([id, state]) => (
-              <TouchableOpacity
-                key={id}
-                style={[
-                  styles.filterChip,
-                  selectedFilter === id && styles.filterChipActive,
-                  selectedFilter === id && { backgroundColor: state.color }
-                ]}
-                onPress={() => setSelectedFilter(id)}
-              >
-                <Text style={[
-                  styles.filterChipText,
-                  selectedFilter === id && styles.filterChipTextActive
-                ]}>
-                  {state.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
 
           {/* User List */}
           <FlatList
@@ -527,6 +555,7 @@ export default function UserManagementSystem() {
               />
             )}
             contentContainerStyle={styles.listContainer}
+            style={{ flex: 1 }}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             }
@@ -624,7 +653,7 @@ export default function UserManagementSystem() {
               </View>
             </View>
           </Modal>
-        </>
+        </View>
       )}
 
       {section === 'estados' && (
@@ -832,7 +861,7 @@ const styles = StyleSheet.create({
   hamburger: { marginRight: 8, padding: 8 },
   appTitle: { fontSize: 18, color: '#fff', fontWeight: '700' },
   pageBody: { flex: 1, paddingHorizontal: 12, paddingVertical: 12 },
-  contentMax: { width: '100%', maxWidth: 1200, alignSelf: 'center' },
+  contentMax: { width: '100%', maxWidth: 1200, alignSelf: 'center', flex: 1 },
   headerStats: {
     flexDirection: 'row',
     justifyContent: 'space-around'
@@ -867,7 +896,9 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2
   },
-  userActionsRow: { marginTop: 12, flexDirection: 'row', justifyContent: 'flex-start', flexWrap: 'wrap', gap: 8 },
+  searchBarWide: { maxWidth: 900, alignSelf: 'center' },
+  userActionsRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap', gap: 8 },
+  userActionsRowWide: { maxWidth: 900, alignSelf: 'center' },
   searchInput: {
     flex: 1,
     marginLeft: 10,
@@ -885,10 +916,12 @@ const styles = StyleSheet.create({
   filterActions: { flexDirection: 'row', alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap', gap: 8 },
   filterChip: {
     paddingHorizontal: 15,
-    paddingVertical: 8,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'white',
     borderRadius: 20,
-    marginRight: 10,
+    marginRight: 8,
     borderWidth: 1,
     borderColor: '#ddd'
   },
@@ -896,14 +929,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#6B5B95',
     borderColor: '#6B5B95'
   },
-  filterChipText: {
-    fontSize: 14,
-    color: '#666'
-  },
+  filterChipText: { fontSize: 13, color: '#666' },
   filterChipTextActive: {
     color: 'white',
     fontWeight: '600'
   },
+  filterChipsRow: { alignItems: 'center', paddingVertical: 6 },
+  chipsWrapRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingVertical: 6, paddingLeft: 12 },
+  chipsInlineScroll: { marginLeft: 12, flex: 1, minWidth: 0 },
+  primaryButtonSm: {
+    backgroundColor: '#6B5B95',
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  primaryButtonSmText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   listContainer: { paddingBottom: 20, paddingHorizontal: 8 },
   userCard: { backgroundColor: 'white', marginHorizontal: 8, marginVertical: 5, borderRadius: 12, padding: 15, borderLeftWidth: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
   userCardContent: {
