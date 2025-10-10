@@ -1,21 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  FlatList,
-  Modal,
-  Alert,
-  StatusBar,
-  SafeAreaView,
-  RefreshControl
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, FlatList, Modal, Alert, StatusBar, SafeAreaView, RefreshControl, Platform } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
-import { listUsers, listEstados, listAccesos, listNotificaciones, filterEstados, createEstado, updateEstado, deleteEstado } from '../services/api';
+import { listUsers, listEstados, listAccesos, listNotificaciones, filterEstados, createEstado, updateEstado, deleteEstado, listTiposUsuario, createAcceso, updateAcceso, deleteAcceso, createNotificacion, updateNotificacion, deleteNotificacion, register, updateUser } from '../services/api';
 
 type IoniconsName = ComponentProps<typeof Ionicons>["name"];
 type UserStateKey = '0001'|'0002'|'0003'|'0004'|'0005'|'0006';
@@ -126,7 +113,7 @@ const UserCard = ({ user, onPress }: { user: AdminUser; onPress: (u: AdminUser) 
 };
 
 // Modal de detalles del usuario
-const UserDetailsModal = ({ visible, user, onClose, onUpdateStatus }: { visible: boolean; user: AdminUser | null; onClose: () => void; onUpdateStatus: (userId: string, newStatus: UserStateKey) => void; }) => {
+const UserDetailsModal = ({ visible, user, onClose, onUpdateStatus, onChangeRole }: { visible: boolean; user: AdminUser | null; onClose: () => void; onUpdateStatus: (userId: string, newStatus: UserStateKey) => void; onChangeRole: (userId: string, tipoUsuarioId: string) => void; }) => {
   if (!user) return null;
 
   const state = USER_STATES[user.idEstado] || USER_STATES['0004'];
@@ -161,6 +148,23 @@ const UserDetailsModal = ({ visible, user, onClose, onUpdateStatus }: { visible:
             <View style={styles.detailSection}>
               <Text style={styles.detailLabel}>Estado Actual:</Text>
               <StatusBadge stateId={user.idEstado} />
+            </View>
+
+            <View style={styles.detailSection}>
+              <Text style={styles.detailLabel}>Rol (Tipo de Usuario):</Text>
+              {/* Selector simple por ahora: botones para roles conocidos */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {[
+                  { label: 'Super Administrador', code: 'SUPERADMIN' },
+                  { label: 'Administrador', code: 'ADMIN' },
+                  { label: 'Paciente', code: 'PACIENTE' },
+                  { label: 'Especialista', code: 'ESPECIALISTA' },
+                ].map(r => (
+                  <TouchableOpacity key={r.code} style={styles.roleChip} onPress={() => onChangeRole(user.id, r.code)}>
+                    <Text style={styles.roleChipText}>{r.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
             
             {user.idEstado === '0005' && (
@@ -212,12 +216,25 @@ export default function UserManagementSystem() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Crear usuario
+  const [tiposUsuario, setTiposUsuario] = useState<any[]>([]);
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    nombres: '',
+    apellidos: '',
+    numDoc: '',
+    fechaNacimiento: '', // YYYY-MM-DD
+    email: '',
+    password: '',
+    tipoCode: 'ADMIN' as 'SUPERADMIN'|'ADMIN'|'PACIENTE'|'ESPECIALISTA',
+  });
 
   // NUEVO: datos admin
   const [estados, setEstados] = useState([]);
   const [accesos, setAccesos] = useState([]);
   const [notificaciones, setNotificaciones] = useState([]);
-  const [section, setSection] = useState<'usuarios'|'estados'|'mensajes'|'notificaciones'>('usuarios');
+  const [section, setSection] = useState<'usuarios'|'estados'|'mensajes'|'notificaciones'|'registros'|'personas'>('usuarios');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -266,6 +283,11 @@ export default function UserManagementSystem() {
       setEstados(estRes?.data || []);
       setAccesos(accRes?.data || []);
       setNotificaciones(notifRes?.data || []);
+      // Tipos de usuario para crear/cambiar rol
+      try {
+        const tu = await listTiposUsuario() as any;
+        setTiposUsuario(tu?.data || []);
+      } catch {}
     } catch (e: any) {
       setErrorMsg(e?.message || 'Error cargando datos de administración');
     } finally {
@@ -315,6 +337,23 @@ export default function UserManagementSystem() {
       ]
     );
   };
+
+  async function handleChangeRole(userId: string, roleCode: string) {
+    try {
+      // Resolver idTipoUsuario desde lista de tipos
+      let tipos = tiposUsuario;
+      if (!tipos || tipos.length === 0) {
+        try { const tu = await listTiposUsuario() as any; tipos = tu?.data || []; setTiposUsuario(tipos); } catch {}
+      }
+      const match = (tipos || []).find((t:any) => (t.codigo || t.nmTipoUsuario || '').toUpperCase() === roleCode.toUpperCase());
+      const idValor = match?._id || roleCode; // fallback: enviar code si backend lo acepta
+      // Llamada API
+      await updateUser(userId, { idTipoUsuario: idValor as any });
+      Alert.alert('Rol actualizado', 'El rol del usuario fue actualizado.');
+    } catch (e:any) {
+      Alert.alert('Error', e?.payload?.message || e?.message || 'No se pudo actualizar el rol');
+    }
+  }
 
   const getStatCount = (stateId: UserStateKey) => {
     return users.filter(user => user.idEstado === stateId).length;
@@ -390,28 +429,35 @@ export default function UserManagementSystem() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Administración</Text>
-        {/* Menú derecho */}
-        <View style={styles.adminMenuRight}>
-          {(['usuarios','estados','mensajes','notificaciones'] as const).map((s) => (
+        <View style={styles.headerLeftArea}>
+          <TouchableOpacity style={styles.hamburger} accessibilityLabel="Menú">
+            <Ionicons name="menu" size={22} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.appTitle}>Panel de Administración</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent} style={styles.tabsScroll}>
+          {(['usuarios','estados','mensajes','notificaciones','registros','personas'] as const).map((s) => (
             <TouchableOpacity
               key={s}
-              style={[styles.adminMenuItem, section===s && styles.adminMenuItemActive]}
+              style={[styles.tabPill, section===s && styles.tabPillActive]}
               onPress={() => setSection(s)}
             >
-              <Text style={[styles.adminMenuText, section===s && styles.adminMenuTextActive]}>
-                {s === 'usuarios' ? 'Usuarios' : s === 'estados' ? 'Estados' : s === 'mensajes' ? 'Mensajes' : 'Notificaciones'}
+              <Text style={[styles.tabPillText, section===s && styles.tabPillTextActive]}>
+                {s === 'usuarios' ? 'Usuarios' : s === 'estados' ? 'Estados' : s === 'mensajes' ? 'Mensajes' : s === 'notificaciones' ? 'Notificaciones' : s === 'registros' ? 'Registros Diarios' : 'Registro de Personas'}
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       </View>
 
-      {errorMsg ? (
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: 'red' }}>{errorMsg}</Text>
-        </View>
-      ) : null}
+      {/* Contenido centrado y responsive */}
+      <View style={styles.pageBody}>
+        <View style={styles.contentMax}>
+          {errorMsg ? (
+            <View style={{ padding: 16 }}>
+              <Text style={{ color: 'red' }}>{errorMsg}</Text>
+            </View>
+          ) : null}
 
       {section === 'usuarios' && (
         <>
@@ -426,13 +472,17 @@ export default function UserManagementSystem() {
                 onChangeText={setSearchText}
               />
             </View>
+            <View style={styles.userActionsRow}>
+              <TouchableOpacity style={[styles.tableFilterButton, { backgroundColor: '#6B5B95' }]} onPress={() => setCreateUserOpen(true)}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>+ Adicionar Usuario</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Filter Chips */}
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
-            style={styles.filterContainer}
           >
             <TouchableOpacity
               style={[styles.filterChip, selectedFilter === 'all' && styles.filterChipActive]}
@@ -497,42 +547,143 @@ export default function UserManagementSystem() {
               setSelectedUser(null);
             }}
             onUpdateStatus={() => {}}
+            onChangeRole={handleChangeRole}
           />
+
+          {/* Modal crear usuario */}
+          <Modal visible={createUserOpen} transparent animationType="fade" onRequestClose={()=> setCreateUserOpen(false)}>
+            <View style={styles.modalOverlayCenter}>
+              <View style={[styles.modalCard, { backgroundColor: '#fff' }] }>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700' }}>Adicionar Usuario</Text>
+                  <TouchableOpacity onPress={()=> setCreateUserOpen(false)}><Ionicons name="close" size={22} color="#333" /></TouchableOpacity>
+                </View>
+                <ScrollView style={{ marginTop: 10, maxHeight: 480 }}>
+                  <Text style={styles.formLabel}>Nombres*</Text>
+                  <TextInput style={styles.formInput} value={createForm.nombres} onChangeText={(t)=> setCreateForm(s=> ({...s, nombres:t}))} />
+                  <Text style={styles.formLabel}>Apellidos*</Text>
+                  <TextInput style={styles.formInput} value={createForm.apellidos} onChangeText={(t)=> setCreateForm(s=> ({...s, apellidos:t}))} />
+                  <Text style={styles.formLabel}>Documento*</Text>
+                  <TextInput style={styles.formInput} value={createForm.numDoc} onChangeText={(t)=> setCreateForm(s=> ({...s, numDoc:t}))} />
+                  <Text style={styles.formLabel}>Fecha Nacimiento (YYYY-MM-DD)*</Text>
+                  <TextInput style={styles.formInput} placeholder="2000-01-01" value={createForm.fechaNacimiento} onChangeText={(t)=> setCreateForm(s=> ({...s, fechaNacimiento:t}))} />
+                  <Text style={styles.formLabel}>Correo*</Text>
+                  <TextInput style={styles.formInput} keyboardType="email-address" autoCapitalize="none" value={createForm.email} onChangeText={(t)=> setCreateForm(s=> ({...s, email:t}))} />
+                  <Text style={styles.formLabel}>Contraseña*</Text>
+                  <TextInput style={styles.formInput} secureTextEntry value={createForm.password} onChangeText={(t)=> setCreateForm(s=> ({...s, password:t}))} />
+                  <Text style={styles.formLabel}>Rol</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                    {(['SUPERADMIN','ADMIN','PACIENTE','ESPECIALISTA'] as const).map(rc => (
+                      <TouchableOpacity key={rc} style={[styles.roleChip, createForm.tipoCode===rc && { backgroundColor: '#6B5B95' }]} onPress={()=> setCreateForm(s=> ({...s, tipoCode: rc}))}>
+                        <Text style={[styles.roleChipText, createForm.tipoCode===rc && { color: '#fff' }]}>{rc}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+                <TouchableOpacity disabled={creating} style={[styles.tableFilterButton, { marginTop: 14, backgroundColor: creating? '#aaa':'#6AB9D2' }]} onPress={async ()=>{
+                  // Validación mínima
+                  if (!createForm.nombres.trim() || !createForm.apellidos.trim() || !createForm.numDoc.trim() || !createForm.fechaNacimiento.trim() || !createForm.email.trim() || !createForm.password) {
+                    Alert.alert('Validación', 'Todos los campos marcados con * son obligatorios.');
+                    return;
+                  }
+                  setCreating(true);
+                  try {
+                    // Resolver idTipoUsuario por código
+                    let tipos = tiposUsuario;
+                    if (!tipos || tipos.length === 0) {
+                      try { const tu = await listTiposUsuario() as any; tipos = tu?.data || []; setTiposUsuario(tipos); } catch {}
+                    }
+                    const match = (tipos || []).find((t:any) => (t.codigo || t.nmTipoUsuario || '').toUpperCase() === createForm.tipoCode);
+                    const idTipo = match?._id || createForm.tipoCode;
+                    const payload = {
+                      persona: {
+                        nombres: createForm.nombres.trim(),
+                        apellidos: createForm.apellidos.trim(),
+                        numDoc: createForm.numDoc.trim(),
+                        fechaNacimiento: new Date(createForm.fechaNacimiento).toISOString(),
+                      },
+                      usuario: {
+                        idTipoUsuario: idTipo,
+                        email: createForm.email.trim(),
+                        passwordHash: createForm.password,
+                      }
+                    };
+                    await register(payload as any);
+                    setCreateUserOpen(false);
+                    // recargar usuarios
+                    await loadAll();
+                    Alert.alert('Usuario creado', 'El usuario fue creado correctamente.');
+                  } catch (e:any) {
+                    Alert.alert('Error', e?.payload?.message || e?.message || 'No se pudo crear el usuario');
+                  } finally {
+                    setCreating(false);
+                  }
+                }}>
+                  <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>{creating? 'Guardando...':'Guardar'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </>
       )}
 
       {section === 'estados' && (
         <View style={{ flex: 1 }}>
           {/* Filtros */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, paddingTop: 10 }}>
-            <View style={{ marginRight: 8 }}>
-              <Text style={styles.smallLabel}>Filtrar por nombre</Text>
+          <View style={styles.filtersBar}>
+            <View style={styles.filterItem}>
+              <Text style={styles.smallLabel}>Nombre Estado</Text>
               <TextInput style={styles.tableFilterInput} placeholder="Filtrar por nombre" value={estadoFilters.nombre} onChangeText={(t)=>setEstadoFilters(s=>({...s,nombre:t}))} />
             </View>
-            <View style={{ marginRight: 8 }}>
-              <Text style={styles.smallLabel}>Símbolo</Text>
+            <View style={styles.filterItem}>
+              <Text style={styles.smallLabel}>Símbolo Estado</Text>
               <TextInput style={styles.tableFilterInput} placeholder="Filtrar por símbolo" value={estadoFilters.simbolo} onChangeText={(t)=>setEstadoFilters(s=>({...s,simbolo:t}))} />
             </View>
-            <View style={{ marginRight: 8 }}>
+            <View style={[styles.filterItem, styles.filterItemColor]}>
               <Text style={styles.smallLabel}>Color</Text>
-              <View style={[styles.tableFilterInput, { justifyContent: 'center' }]}>
-                <Text style={{ color: '#666' }}>{'Color estado'}</Text>
+              <View style={[styles.tableFilterInput, styles.colorInputRow]}>
+                <Text style={{ color: '#666', flex: 1 }}>Color estado</Text>
+                <TouchableOpacity accessibilityLabel="Limpiar color">
+                  <Ionicons name="close-circle" size={18} color="#c9c9c9" />
+                </TouchableOpacity>
               </View>
             </View>
-            <View style={{ marginRight: 8 }}>
+            <View style={styles.filterItem}>
               <Text style={styles.smallLabel}>Módulo</Text>
               <TextInput style={styles.tableFilterInput} placeholder="Filtrar por módulo" value={estadoFilters.modulo} onChangeText={(t)=>setEstadoFilters(s=>({...s,modulo:t}))} />
             </View>
-            <TouchableOpacity style={styles.tableFilterButton} onPress={applyEstadoFilters}>
-              <Text style={{ color: '#fff', fontWeight: '700' }}>Filtrar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.tableFilterButton, { backgroundColor: '#6AB9D2', marginLeft: 8 }]} onPress={openNewEstado}>
-              <Text style={{ color: '#fff', fontWeight: '700' }}>+ Adicionar Estado</Text>
-            </TouchableOpacity>
-          </ScrollView>
+            <View style={[styles.filterItem, styles.visibleItem]}>
+              <Text style={styles.smallLabel}>Visible</Text>
+              <View style={styles.visibleRow}>
+                {[
+                  {label: 'Todos', value: undefined},
+                  {label: 'Sí', value: true},
+                  {label: 'No', value: false},
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={String(opt.value)}
+                    onPress={() => setEstadoFilters(s=>({...s, visible: opt.value as any}))}
+                    style={[styles.visibleChip, estadoFilters.visible === opt.value && styles.visibleChipActive]}
+                  >
+                    <Text style={[styles.visibleChipText, estadoFilters.visible === opt.value && styles.visibleChipTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={styles.filterActions}>
+              <TouchableOpacity style={styles.tableFilterButton} onPress={applyEstadoFilters}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Filtrar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.tableFilterButton, { backgroundColor: '#6AB9D2', marginLeft: 8 }]} onPress={openNewEstado}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>+ Adicionar Estado</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {/* Tabla */}
-          <ScrollView style={{ flex: 1, marginTop: 10 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+          <ScrollView style={styles.tableWrapper} contentContainerStyle={styles.tableContent}>
             {/* Header tabla */}
             <View style={styles.tableHeaderRow}>
               {['Identificador', 'Nombre Estado', 'Símbolo', 'Descripción', 'Color', 'Visible', 'Módulo', 'Acciones'].map((h)=> (
@@ -562,9 +713,13 @@ export default function UserManagementSystem() {
 
             {/* Paginación simple */}
             <View style={styles.paginationRow}>
-              <Text style={{ color: '#666' }}>Items per page:</Text>
-              <Text style={{ fontWeight: '700', marginHorizontal: 8 }}>{estadoPageSize}</Text>
+              <View style={styles.itemsPerPage}>
+                <Text style={styles.itemsPerPageLabel}>Items per page:</Text>
+                <View style={styles.itemsPerPageBox}><Text style={styles.itemsPerPageValue}>{estadoPageSize}</Text></View>
+              </View>
               <View style={{ flex: 1 }} />
+              <Text style={styles.rangeText}>{`${(estadoPage-1)*estadoPageSize + 1}–${Math.min(estadoPage*estadoPageSize, (estados?.length||0))} of ${(estados?.length||0)}`}</Text>
+              <View style={{ width: 8 }} />
               <TouchableOpacity disabled={estadoPage<=1} onPress={()=> setEstadoPage(p => Math.max(1, p-1))}>
                 <Ionicons name="chevron-back" size={18} color={estadoPage<=1? '#ccc':'#333'} />
               </TouchableOpacity>
@@ -638,6 +793,20 @@ export default function UserManagementSystem() {
           )}
         </ScrollView>
       )}
+
+      {section === 'registros' && (
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: '#333' }}>Registros Diarios: Aquí podrás listar y filtrar diarios por identificación del paciente (pendiente de wiring a backend).</Text>
+        </View>
+      )}
+
+      {section === 'personas' && (
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: '#333' }}>Registro de Personas: Aquí podrás consultar y gestionar personas asociadas a usuarios (pendiente de wiring a backend).</Text>
+        </View>
+      )}
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -659,12 +828,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 15
-  },
+  headerLeftArea: { flexDirection: 'row', alignItems: 'center' },
+  hamburger: { marginRight: 8, padding: 8 },
+  appTitle: { fontSize: 18, color: '#fff', fontWeight: '700' },
+  pageBody: { flex: 1, paddingHorizontal: 12, paddingVertical: 12 },
+  contentMax: { width: '100%', maxWidth: 1200, alignSelf: 'center' },
   headerStats: {
     flexDirection: 'row',
     justifyContent: 'space-around'
@@ -683,7 +851,8 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   searchContainer: {
-    padding: 15
+    paddingHorizontal: 0,
+    paddingVertical: 12
   },
   searchBar: {
     flexDirection: 'row',
@@ -698,15 +867,22 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2
   },
+  userActionsRow: { marginTop: 12, flexDirection: 'row', justifyContent: 'flex-start', flexWrap: 'wrap', gap: 8 },
   searchInput: {
     flex: 1,
     marginLeft: 10,
     fontSize: 16
   },
-  filterContainer: {
-    paddingHorizontal: 15,
-    marginBottom: 10
+  filtersBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    alignItems: 'flex-end',
+    paddingVertical: 12,
   },
+  filterItem: { minWidth: 140, flexGrow: 1, flexShrink: 1 },
+  filterItemColor: { maxWidth: 220 },
+  filterActions: { flexDirection: 'row', alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap', gap: 8 },
   filterChip: {
     paddingHorizontal: 15,
     paddingVertical: 8,
@@ -728,22 +904,8 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600'
   },
-  listContainer: {
-    paddingBottom: 20
-  },
-  userCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 15,
-    marginVertical: 5,
-    borderRadius: 12,
-    padding: 15,
-    borderLeftWidth: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2
-  },
+  listContainer: { paddingBottom: 20, paddingHorizontal: 8 },
+  userCard: { backgroundColor: 'white', marginHorizontal: 8, marginVertical: 5, borderRadius: 12, padding: 15, borderLeftWidth: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
   userCardContent: {
     flexDirection: 'row',
     alignItems: 'center'
@@ -885,29 +1047,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: 5
   },
-  adminMenuRight: {
-    position: 'absolute',
-    right: 12,
-    top: 20,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  adminMenuItem: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  adminMenuItemActive: {
-    backgroundColor: 'rgba(255,255,255,0.35)'
-  },
-  adminMenuText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  adminMenuTextActive: {
-    textDecorationLine: 'underline'
-  },
+  roleChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: '#f2f2f7' },
+  roleChipText: { color: '#333', fontWeight: '600' },
+  tabsScroll: { marginTop: 12 },
+  tabsContent: { paddingRight: 12, alignItems: 'center' },
+  tabPill: { backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8 },
+  tabPillActive: { backgroundColor: 'rgba(255,255,255,0.35)' },
+  tabPillText: { color: 'white', fontWeight: '600' },
+  tabPillTextActive: { textDecorationLine: 'underline' },
   // NUEVO: estilos para tabla de estados
   smallLabel: {
     fontSize: 12,
@@ -933,6 +1080,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 120
   },
+  colorInputRow: { flexDirection: 'row', alignItems: 'center' },
+  visibleItem: { minWidth: 200 },
+  visibleRow: { flexDirection: 'row', gap: 8 },
+  visibleChip: { paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 8 },
+  visibleChipActive: { backgroundColor: '#6B5B95', borderColor: '#6B5B95' },
+  visibleChipText: { color: '#666', fontWeight: '600' },
+  visibleChipTextActive: { color: '#fff' },
+  tableWrapper: { flex: 1, marginTop: 10 },
+  tableContent: { paddingHorizontal: 0, paddingBottom: 16 },
   tableHeaderRow: {
     flexDirection: 'row',
     backgroundColor: '#f9f9f9',
@@ -983,6 +1139,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingTop: 10
   },
+  itemsPerPage: { flexDirection: 'row', alignItems: 'center' },
+  itemsPerPageLabel: { color: '#666' },
+  itemsPerPageBox: { marginHorizontal: 8, borderWidth: 1, borderColor: '#ddd', paddingHorizontal: 8, paddingVertical: Platform.OS === 'android' ? 4 : 6, borderRadius: 6, backgroundColor: '#fff' },
+  itemsPerPageValue: { fontWeight: '700' },
+  rangeText: { color: '#666' },
   modalOverlayCenter: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',

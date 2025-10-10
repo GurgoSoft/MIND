@@ -245,6 +245,13 @@ export async function listUsers(params?: { activo?: boolean; idTipoUsuario?: str
   return apiFetch(`/api/users/usuarios${q ? `?${q}` : ''}`, { method: 'GET' });
 }
 
+export async function updateUser(id: string, payload: Partial<{ idTipoUsuario: string; idEstado: string; activo: boolean; telefono?: string }>) {
+  return apiFetch(`/api/users/usuarios/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
 // Estados (administrativo)
 export async function listEstados() {
   return adminFetch(`/api/admin/estados`, { method: 'GET' });
@@ -254,10 +261,28 @@ export async function listEstados() {
 export async function listAccesos() {
   return adminFetch(`/api/admin/accesos`, { method: 'GET' });
 }
+export async function createAcceso(payload: { nombre: string; codigo: string; scope?: string; visible?: boolean }) {
+  return adminFetch(`/api/admin/accesos`, { method: 'POST', body: JSON.stringify(payload) });
+}
+export async function updateAcceso(id: string, payload: Partial<{ nombre: string; codigo: string; scope?: string; visible?: boolean }>) {
+  return adminFetch(`/api/admin/accesos/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+export async function deleteAcceso(id: string) {
+  return adminFetch(`/api/admin/accesos/${id}`, { method: 'DELETE' });
+}
 
 // Notificaciones (administrativo)
 export async function listNotificaciones() {
   return adminFetch(`/api/admin/notificaciones`, { method: 'GET' });
+}
+export async function createNotificacion(payload: { titulo?: string; asunto?: string; destinatario?: string; tipo?: string; visible?: boolean; contenido?: string }) {
+  return adminFetch(`/api/admin/notificaciones`, { method: 'POST', body: JSON.stringify(payload) });
+}
+export async function updateNotificacion(id: string, payload: Partial<{ titulo?: string; asunto?: string; destinatario?: string; tipo?: string; visible?: boolean; contenido?: string }>) {
+  return adminFetch(`/api/admin/notificaciones/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+export async function deleteNotificacion(id: string) {
+  return adminFetch(`/api/admin/notificaciones/${id}`, { method: 'DELETE' });
 }
 
 // Tipos de Usuario (usuarios)
