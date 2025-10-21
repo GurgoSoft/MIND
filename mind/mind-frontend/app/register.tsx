@@ -15,10 +15,12 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from '@expo/vector-icons';
 import { register as apiRegister } from "../services/api";
-import { router } from "expo-router";
+import { saveToken } from "../services/auth";
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function RegisterScreen() {
+  const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [secondName, setSecondName] = useState("");
   const [firstLastName, setFirstLastName] = useState("");
@@ -131,10 +133,30 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      await apiRegister(payload as any);
-      setMsgTitle('Registro exitoso');
-      setMsgBody('Ahora puedes iniciar sesión.');
-      setMsgVisible(true);
+      console.log('🚀 Iniciando registro con payload:', payload);
+      const res = await apiRegister(payload as any);
+      console.log('✅ Registro exitoso. Respuesta:', res);
+      
+      const usuarioId = res?.data?.usuario?._id;
+      const token = res?.data?.token;
+      
+      console.log('📝 Usuario ID obtenido:', usuarioId);
+      console.log('🔑 Token obtenido:', token ? 'Sí' : 'No');
+      
+      // Guardar el token si se recibió
+      if (token) {
+        await saveToken(token);
+        console.log('💾 Token guardado exitosamente');
+      }
+      
+      // Navegar directamente a la pantalla de verificación
+      if (usuarioId) {
+        console.log('🧭 Navegando a verificación con usuarioId:', usuarioId);
+        router.push(`/verify-registration?usuarioId=${usuarioId}`);
+      } else {
+        console.log('🧭 Navegando a verificación sin usuarioId');
+        router.push('/verify-registration');
+      }
     } catch (err: any) {
       const status = err?.status;
       let msg = err?.payload?.message || err?.message || 'Error al registrar';

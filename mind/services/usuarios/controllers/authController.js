@@ -6,6 +6,7 @@ const TipoUsuario = require('../../../shared/models/usuarios/TipoUsuario');
 const Estado = require('../../../shared/models/administrativo/Estado');
 const UsuarioAuditoria = require('../../../shared/models/usuarios/UsuarioAuditoria');
 const AuthMiddleware = require('../../../shared/middleware/auth');
+const emailService = require('../services/emailService');
 
 class AuthController {
   // Register new user
@@ -465,6 +466,240 @@ class AuthController {
         success: false,
         message: 'Error en logout',
         error: error.message
+      });
+    }
+  }
+
+  // Send verification email
+  static async sendVerificationEmail(req, res) {
+    try {
+      const { usuarioId } = req.body;
+
+      if (!usuarioId) {
+        return res.status(400).json({
+          success: false,
+          message: 'El ID del usuario es requerido'
+        });
+      }
+
+      // Find user (incluir campos de verificación)
+      const usuario = await Usuario.findById(usuarioId)
+        .select('+verificationCode +verificationCodeExpires') // Incluir campos ocultos
+        .populate('idPersona');
+
+      if (!usuario) {
+        return res.status(404).json({
+          success: false,
+          message: 'Usuario no encontrado'
+        });
+      }
+
+      // Generate 6-digit verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      // Save verification code to user document
+      usuario.verificationCode = verificationCode;
+      usuario.verificationCodeExpires = expiresAt;
+      await usuario.save();
+
+      // Send verification email
+      try {
+        const userName = usuario.idPersona?.nombres || '';
+        await emailService.sendVerificationCode(usuario.email, verificationCode, userName);
+      } catch (emailError) {
+        console.error('Error enviando correo:', emailError.message);
+      }
+
+      // Audit log
+      try {
+        await UsuarioAuditoria.create({
+          entidad: 'Usuario',
+          idEntidad: usuarioId,
+          accion: 'VERIFICATION_CODE_SENT',
+          usuarioId: usuarioId,
+          datosNuevos: { 
+            email: usuario.email,
+            codeGenerated: true,
+            expiresAt: expiresAt,
+            timestamp: new Date()
+          },
+          ip: req.ip,
+          userAgent: req.get('User-Agent')
+        });
+      } catch (auditError) {
+        console.error('Error en audit log:', auditError.message);
+      }
+
+      res.json({
+        success: true,
+        message: 'Código de verificación enviado exitosamente',
+        data: {
+          usuarioId: usuario._id,
+          email: usuario.email,
+          expiresAt: expiresAt,
+          // Solo para desarrollo - remover en producción
+          verificationCode: process.env.NODE_ENV === 'development' ? verificationCode : undefined
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Error enviando código de verificación',
+        error: error.message
+      });
+    }
+  }
+
+  // Verify registration code
+  static async verifyCode(req, res) {
+    try {
+      const { usuarioId, code } = req.body;
+
+      if (!usuarioId || !code) {
+        return res.status(400).json({
+          success: false,
+          message: 'Usuario ID y código son requeridos'
+        });
+      }
+
+      // Find user (incluir campos de verificación)
+      const usuario = await Usuario.findById(usuarioId)
+        .select('+verificationCode +verificationCodeExpires')
+        .populate([
+          { path: 'idPersona' },
+          { path: 'idTipoUsuario', select: 'codigo nombre' }
+        ]);
+
+      if (!usuario) {
+        return res.status(404).json({
+          success: false,
+          message: 'Usuario no encontrado'
+        });
+      }
+
+      // Check if code exists and hasn't expired
+      if (!usuario.verificationCode || !usuario.verificationCodeExpires) {
+        return res.status(400).json({
+          success: false,
+          message: 'No hay código de verificación pendiente'
+        });
+      }
+
+      if (new Date() > usuario.verificationCodeExpires) {
+        return res.status(400).json({
+          success: false,
+          message: 'El código de verificación ha expirado'
+        });
+      }
+
+      if (usuario.verificationCode !== code) {
+        return res.status(400).json({
+          success: false,
+          message: 'Código de verificación incorrecto'
+        });
+      }
+
+      // Mark user as verified and clear verification code
+      usuario.emailVerified = true;
+      usuario.verificationCode = undefined;
+      usuario.verificationCodeExpires = undefined;
+      usuario.activo = true; // Activate the user
+      
+      // Update state to "Activo" (0003) when verified
+      const Estado = require('../../../shared/models/administrativo/Estado');
+      const estadoActivo = await Estado.findOne({ codigo: '0003' });
+      if (estadoActivo) {
+        usuario.idEstado = estadoActivo._id;
+      }
+      
+      await usuario.save();
+
+      // Generate new JWT token for auto-login
+      const token = AuthMiddleware.generateToken({
+        userId: usuario._id,
+        email: usuario.email
+      });
+
+      // Audit log
+      try {
+        await UsuarioAuditoria.create({
+          entidad: 'Usuario',
+          idEntidad: usuarioId,
+          accion: 'EMAIL_VERIFIED',
+          usuarioId: usuarioId,
+          datosNuevos: { 
+            emailVerified: true,
+            activatedAt: new Date(),
+            autoLogin: true
+          },
+          ip: req.ip,
+          userAgent: req.get('User-Agent')
+        });
+      } catch (auditError) {
+        console.error('Error en audit log:', auditError.message);
+      }
+
+      res.json({
+        success: true,
+        message: 'Verificación exitosa - Usuario activado',
+        data: {
+          usuario: {
+            _id: usuario._id,
+            email: usuario.email,
+            telefono: usuario.telefono,
+            activo: usuario.activo,
+            emailVerified: usuario.emailVerified,
+            persona: usuario.idPersona,
+            tipoUsuario: usuario.idTipoUsuario
+          },
+          token
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Error verificando código',
+        error: error.message
+      });
+    }
+  }
+
+  // Get user profile
+  static async getProfile(req, res) {
+    try {
+      const usuario = await Usuario.findById(req.user.id)
+        .populate([
+          { path: 'idPersona', select: 'nombres apellidos numDoc tipoDoc fechaNac' },
+          { path: 'idTipoUsuario', select: 'codigo nombre' }
+        ]);
+
+      if (!usuario) {
+        return res.status(404).json({
+          success: false,
+          message: 'Usuario no encontrado'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          id: usuario._id,
+          email: usuario.email,
+          telefono: usuario.telefono,
+          activo: usuario.activo,
+          emailVerified: usuario.emailVerified,
+          persona: usuario.idPersona,
+          tipoUsuario: usuario.idTipoUsuario,
+          fechaUltimoAcceso: usuario.fechaUltimoAcceso
+        }
+      });
+
+    } catch (error) {
+      console.error('Error obteniendo perfil:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
       });
     }
   }

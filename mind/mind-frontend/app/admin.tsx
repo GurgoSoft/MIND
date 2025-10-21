@@ -252,6 +252,19 @@ export default function UserManagementSystem() {
     loadAll();
   }, []);
 
+  // Auto-refresh cada 30 segundos para la sección de usuarios
+  useEffect(() => {
+    if (section !== 'usuarios') return;
+    
+    const interval = setInterval(() => {
+      if (!loading && !refreshing) {
+        loadAll();
+      }
+    }, 30000); // 30 segundos
+
+    return () => clearInterval(interval);
+  }, [section, loading, refreshing]);
+
   async function loadAll() {
     setLoading(true);
     setErrorMsg('');
@@ -322,7 +335,7 @@ export default function UserManagementSystem() {
     setFilteredUsers(filtered);
   }, [searchText, selectedFilter, users]);
 
-  const handleStatusUpdate = (userId: string, newStatus: UserStateKey) => {
+  const handleStatusUpdate = async (userId: string, newStatus: UserStateKey) => {
     Alert.alert(
       'Confirmar Cambio',
       `¿Desea cambiar el estado del usuario a ${USER_STATES[newStatus].name}?`,
@@ -330,10 +343,29 @@ export default function UserManagementSystem() {
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Confirmar',
-          onPress: () => {
-            setUsers((prevUsers: AdminUser[]) => prevUsers.map((user) => (user.id === userId ? { ...user, idEstado: newStatus } : user)));
-            setModalVisible(false);
-            Alert.alert('Éxito', 'Estado actualizado correctamente');
+          onPress: async () => {
+            try {
+              // Buscar el estado correspondiente
+              const estadoCorrespondiente = estados.find((e: any) => e.codigo === newStatus) as any;
+              if (estadoCorrespondiente) {
+                await updateUser(userId, { idEstado: estadoCorrespondiente._id });
+              }
+              
+              // Actualizar localmente y recargar datos
+              setUsers((prevUsers: AdminUser[]) => 
+                prevUsers.map((user) => 
+                  user.id === userId ? { ...user, idEstado: newStatus } : user
+                )
+              );
+              setModalVisible(false);
+              
+              // Recargar todos los datos para asegurar consistencia
+              await loadAll();
+              
+              Alert.alert('Éxito', 'Estado actualizado correctamente');
+            } catch (error: any) {
+              Alert.alert('Error', error?.message || 'No se pudo actualizar el estado');
+            }
           }
         }
       ]
@@ -473,6 +505,17 @@ export default function UserManagementSystem() {
                 value={searchText}
                 onChangeText={setSearchText}
               />
+              <TouchableOpacity 
+                onPress={onRefresh} 
+                style={styles.refreshButton}
+                disabled={refreshing}
+              >
+                <Ionicons 
+                  name="refresh" 
+                  size={20} 
+                  color={refreshing ? "#ccc" : "#666"} 
+                />
+              </TouchableOpacity>
             </View>
             <View style={[styles.userActionsRow, isDesktop && styles.userActionsRowWide]}>
               <TouchableOpacity style={styles.primaryButtonSm} onPress={() => setCreateUserOpen(true)}>
@@ -575,7 +618,7 @@ export default function UserManagementSystem() {
               setModalVisible(false);
               setSelectedUser(null);
             }}
-            onUpdateStatus={() => {}}
+            onUpdateStatus={handleStatusUpdate}
             onChangeRole={handleChangeRole}
           />
 
@@ -903,6 +946,12 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 10,
     fontSize: 16
+  },
+  refreshButton: {
+    padding: 8,
+    marginLeft: 8,
+    borderRadius: 6,
+    backgroundColor: '#f0f0f0'
   },
   filtersBar: {
     flexDirection: 'row',

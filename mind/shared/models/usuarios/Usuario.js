@@ -55,6 +55,19 @@ const usuarioSchema = new mongoose.Schema({
   },
   fechaBloqueo: {
     type: Date
+  },
+  // Campos para verificación de email
+  emailVerified: {
+    type: Boolean,
+    default: false
+  },
+  verificationCode: {
+    type: String,
+    select: false // No incluir en consultas por defecto por seguridad
+  },
+  verificationCodeExpires: {
+    type: Date,
+    select: false // No incluir en consultas por defecto por seguridad
   }
 }, {
   timestamps: true,

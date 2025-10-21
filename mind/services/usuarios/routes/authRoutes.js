@@ -54,6 +54,15 @@ const changePasswordSchema = Joi.object({
   newPassword: commonSchemas.password
 });
 
+const sendVerificationSchema = Joi.object({
+  usuarioId: commonSchemas.objectId
+});
+
+const verifyCodeSchema = Joi.object({
+  usuarioId: commonSchemas.objectId,
+  code: Joi.string().length(6).pattern(/^[0-9]+$/).required()
+});
+
 // Routes
 router.post('/register', 
   validate(registerSchema),
@@ -85,6 +94,16 @@ router.put('/change-password',
 router.post('/logout', 
   AuthMiddleware.authenticate,
   AuthController.logout
+);
+
+router.post('/send-verification', 
+  validate(sendVerificationSchema),
+  AuthController.sendVerificationEmail
+);
+
+router.post('/verify-code', 
+  validate(verifyCodeSchema),
+  AuthController.verifyCode
 );
 
 module.exports = router;

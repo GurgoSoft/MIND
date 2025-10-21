@@ -194,6 +194,29 @@ export async function forgotPassword(email: string) {
   });
 }
 
+// Send verification email after registration
+export async function sendVerificationEmail(usuarioId: string) {
+  return apiFetch(`/api/auth/send-verification`, {
+    method: 'POST',
+    body: JSON.stringify({ usuarioId }),
+  });
+}
+
+// Verify code and complete registration
+export async function verifyRegistrationCode(usuarioId: string, code: string) {
+  return apiFetch(`/api/auth/verify-code`, {
+    method: 'POST',
+    body: JSON.stringify({ usuarioId, code }),
+  });
+}
+
+// Get user profile
+export async function getUserProfile() {
+  return apiFetch(`/api/auth/profile`, {
+    method: 'GET',
+  });
+}
+
 // Tipos y API de Menús (Administrativo)
 export type MenuItem = {
   _id: string;
@@ -260,6 +283,16 @@ export async function listEstados() {
 // Accesos (administrativo)
 export async function listAccesos() {
   return adminFetch(`/api/admin/accesos`, { method: 'GET' });
+}
+
+// Get acceso by id
+export async function getAccesoById(id: string) {
+  return adminFetch(`/api/admin/accesos/${id}`, { method: 'GET' });
+}
+
+// Create acceso-usuario (registra envío/estado de verificación)
+export async function createAccesoUsuario(payload: { usuarioId: string; accesoId: string; fechaAsignacion?: string; activo?: boolean }) {
+  return adminFetch(`/api/admin/accesosusuario`, { method: 'POST', body: JSON.stringify(payload) });
 }
 export async function createAcceso(payload: { nombre: string; codigo: string; scope?: string; visible?: boolean }) {
   return adminFetch(`/api/admin/accesos`, { method: 'POST', body: JSON.stringify(payload) });

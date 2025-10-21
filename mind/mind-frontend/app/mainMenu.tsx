@@ -9,17 +9,28 @@ import {
   Image,
   Platform,
   ActivityIndicator,
+  Modal,
+  Animated,
+  Dimensions,
+  TouchableOpacity,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { getRootMenus, type MenuItem } from "../services/api";
+import { getRootMenus, getUserProfile, type MenuItem } from "../services/api";
+import { clearToken } from "../services/auth";
+
+const { width } = Dimensions.get('window');
 
 export default function MainMenuScreen() {
   const [pressedId, setPressedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [menus, setMenus] = useState<MenuItem[]>([]);
+  const [userName, setUserName] = useState<string>('');
+  const [sidebarVisible, setSidebarVisible] = useState(false);
+  const sidebarAnim = useState(new Animated.Value(-width * 0.8))[0];
+  const overlayAnim = useState(new Animated.Value(0))[0];
   const router = useRouter();
 
   useEffect(() => {
@@ -27,9 +38,23 @@ export default function MainMenuScreen() {
     (async () => {
       try {
         setLoading(true);
-        const res = await getRootMenus();
+        
+        // Cargar menús y perfil del usuario en paralelo
+        const [menusRes, profileRes] = await Promise.all([
+          getRootMenus(),
+          getUserProfile()
+        ]);
+        
         if (!mounted) return;
-        setMenus(res.data || []);
+        
+        setMenus(menusRes.data || []);
+        
+        // Extraer nombre del usuario
+        const persona = profileRes?.data?.persona;
+        if (persona?.nombres) {
+          setUserName(persona.nombres.split(' ')[0]); // Solo el primer nombre
+        }
+        
       } catch (e: any) {
         if (!mounted) return;
         // Evitar redirección aquí; el guard global mostrará el modal y gestionará el login
@@ -73,6 +98,49 @@ export default function MainMenuScreen() {
     if (name.includes("suscrip") || name.includes("benef")) return; // TODO
   };
 
+  const openSidebar = () => {
+    setSidebarVisible(true);
+    Animated.parallel([
+      Animated.timing(sidebarAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const closeSidebar = () => {
+    Animated.parallel([
+      Animated.timing(sidebarAnim, {
+        toValue: -width * 0.8,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setSidebarVisible(false);
+    });
+  };
+
+  const handleLogout = async () => {
+    try {
+      await clearToken();
+      closeSidebar();
+      router.replace('/login');
+    } catch (error) {
+      console.error('Error cerrando sesión:', error);
+    }
+  };
+
   return (
     <LinearGradient
       colors={["#859CE8", "#6AB0D2"]}
@@ -83,10 +151,16 @@ export default function MainMenuScreen() {
       {/* Header fijo */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Pressable style={styles.menuButton} android_ripple={{ color: "#ffffff22" }}>
+          <Pressable 
+            style={styles.menuButton} 
+            onPress={openSidebar}
+            android_ripple={{ color: "#ffffff22" }}
+          >
             <MaterialCommunityIcons name="menu" size={26} color="#fff" />
           </Pressable>
-          <Text style={styles.greeting}>Bienvenido</Text>
+          <Text style={styles.greeting}>
+            Bienvenido{userName ? `, ${userName}` : ''}
+          </Text>
         </View>
 
         <Image source={require("../assets/MINDLOGO_BLUE.png")} style={styles.logo} />
@@ -139,6 +213,87 @@ export default function MainMenuScreen() {
           })}
         </ScrollView>
       )}
+
+      {/* Sidebar Modal */}
+      <Modal
+        visible={sidebarVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={closeSidebar}
+      >
+        <View style={styles.modalContainer}>
+          {/* Overlay */}
+          <Animated.View 
+            style={[
+              styles.overlay,
+              {
+                opacity: overlayAnim,
+              }
+            ]}
+          >
+            <TouchableOpacity 
+              style={styles.overlayTouch}
+              onPress={closeSidebar}
+              activeOpacity={1}
+            />
+          </Animated.View>
+
+          {/* Sidebar */}
+          <Animated.View
+            style={[
+              styles.sidebar,
+              {
+                transform: [{ translateX: sidebarAnim }],
+              }
+            ]}
+          >
+            <LinearGradient
+              colors={["#7675DD", "#5E4AE3"]}
+              style={styles.sidebarGradient}
+            >
+              {/* Header del sidebar */}
+              <View style={styles.sidebarHeader}>
+                <View style={styles.userInfo}>
+                  <View style={styles.avatarContainer}>
+                    <MaterialCommunityIcons name="account-circle" size={60} color="#fff" />
+                  </View>
+                  <Text style={styles.userName}>
+                    {userName || 'Usuario'}
+                  </Text>
+                  <Text style={styles.userRole}>MIND App</Text>
+                </View>
+              </View>
+
+              {/* Contenido del sidebar */}
+              <View style={styles.sidebarContent}>
+                {/* Opción de cerrar sesión */}
+                <TouchableOpacity
+                  style={styles.sidebarOption}
+                  onPress={handleLogout}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons 
+                    name="logout" 
+                    size={24} 
+                    color="#fff" 
+                    style={styles.sidebarIcon}
+                  />
+                  <Text style={styles.sidebarOptionText}>Cerrar Sesión</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Botón de cerrar */}
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={closeSidebar}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </LinearGradient>
+          </Animated.View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -226,5 +381,84 @@ const styles = StyleSheet.create({
 
   cardIcon: {
     marginLeft: 12,
+  },
+
+  // Estilos del sidebar
+  modalContainer: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  overlayTouch: {
+    flex: 1,
+  },
+  sidebar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: width * 0.8,
+    maxWidth: 320,
+  },
+  sidebarGradient: {
+    flex: 1,
+  },
+  sidebarHeader: {
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  userInfo: {
+    alignItems: 'center',
+  },
+  avatarContainer: {
+    marginBottom: 12,
+  },
+  userName: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  userRole: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  sidebarContent: {
+    flex: 1,
+    paddingTop: 20,
+  },
+  sidebarOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginBottom: 8,
+  },
+  sidebarIcon: {
+    marginRight: 16,
+  },
+  sidebarOptionText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 30,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

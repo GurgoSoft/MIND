@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from "../context/AuthContext";
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 
 // Rutas públicas (accesibles sin autenticación)
-const PUBLIC_ROUTES = new Set<string>(['/', '/index', '/home', '/login', '/register', '/forgotPassword']);
+const PUBLIC_ROUTES = new Set<string>(['/', '/index', '/home', '/login', '/register', '/forgotPassword', '/verify-registration']);
 
 function RouteGuard({ children }: { children: React.ReactNode }) {
   const { token, loading } = useAuth();
@@ -68,6 +68,7 @@ export default function Layout() {
           <Stack.Screen name="login" /> {/*  pantalla de login */}
           <Stack.Screen name="forgotPassword" /> {/* pantalla de recuperación de contraseña */}
           <Stack.Screen name="register" /> {/*  pantalla de registro */}
+          <Stack.Screen name="verify-registration" /> {/*  pantalla de verificación */}
           <Stack.Screen name="mainMenu" /> {/*  pantalla del menú principal */}
           <Stack.Screen name="diarioEmocional" /> {/*  pantalla de diario emocional */}
           <Stack.Screen name="admin" /> {/*  pantalla de administración */}
