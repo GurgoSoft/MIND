@@ -1,5 +1,5 @@
 // DiarioEmocionalScreen.js
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,13 +15,20 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { getUserProfile, listDiarios, createDiario } from "../services/api";
 
 export default function DiarioEmocionalScreen() {
   // Estados
+  const [userName, setUserName] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [diarios, setDiarios] = useState<any[]>([]);
   const [selectedEmotion, setSelectedEmotion] = useState("");
   const [selectedIntensity, setSelectedIntensity] = useState("");
   const [selectedFeeling, setSelectedFeeling] = useState("");
   const [selectedSymptom, setSelectedSymptom] = useState("");
+  const [hoySiento, setHoySiento] = useState("");
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState<null | 'emocion' | 'intensidad' | 'sensacion' | 'sintoma'>(null);
@@ -68,6 +75,74 @@ export default function DiarioEmocionalScreen() {
     setModalSearch("");
     setModalVisible(true);
   };
+
+  // Cargar perfil y diarios recientes
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const profile = await getUserProfile();
+        if (!mounted) return;
+        const p = profile?.data;
+        const uid = p?.usuario?._id || p?._id;
+        const first = p?.persona?.nombres ? String(p.persona.nombres).split(' ')[0] : '';
+        if (first) setUserName(first);
+        if (uid) setUserId(uid);
+        // cargar diarios del usuario
+        if (uid) {
+          try {
+            const res = await listDiarios({ idUsuario: uid, page: 1, limit: 10 });
+            if (mounted) setDiarios(res?.data || []);
+          } catch {}
+        }
+      } catch (e: any) {
+        if (mounted) setError(e?.message || 'No se pudo cargar tu perfil');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  async function handleGuardar() {
+    if (!userId) { setError('Sesión requerida'); return; }
+    try {
+      setLoading(true);
+      setError(null);
+      // Derivar una calificación de 1-5 según la intensidad seleccionada (simple)
+      let cal = 3;
+      if (selectedIntensity) {
+        const idx = intensidades.findIndex(i => i === selectedIntensity);
+        if (idx >= 0) cal = Math.min(5, Math.max(1, Math.round((idx + 1) / 2)));
+      }
+      const titulo = selectedEmotion ? `Me siento: ${selectedEmotion}` : 'Diario emocional';
+      const descripcion = hoySiento?.trim() || undefined;
+      await createDiario({
+        diario: {
+          idUsuario: userId,
+          fecha: new Date().toISOString(),
+          titulo,
+          calificacion: cal,
+          descripcion,
+        }
+      });
+      // recargar lista
+      const res = await listDiarios({ idUsuario: userId, page: 1, limit: 10 });
+      setDiarios(res?.data || []);
+      // limpiar inputs básicos
+      setSelectedEmotion("");
+      setSelectedIntensity("");
+      setSelectedFeeling("");
+      setSelectedSymptom("");
+      setHoySiento("");
+    } catch (e: any) {
+      setError(e?.payload?.message || e?.message || 'No se pudo guardar');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // Selección desde modal
   const handleSelect = (item: string) => {
@@ -171,13 +246,13 @@ export default function DiarioEmocionalScreen() {
       end={{ x: 0, y: 1 }}
       style={styles.container}
     >
-      {/* Header */}
+      {/* Header con saludo */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Pressable style={styles.menuButton}>
             <MaterialCommunityIcons name="menu" size={22} color="#fff" />
           </Pressable>
-          <Text style={styles.greeting}>Hola, Jhon</Text>
+          <Text style={styles.greeting}>Hola{userName ? `, ${userName}` : ''}</Text>
         </View>
         <Image
           source={require("../assets/MINDLOGO_BLUE.png")}
@@ -273,15 +348,34 @@ export default function DiarioEmocionalScreen() {
               placeholderTextColor="#c7c7c7"
               multiline
               textAlignVertical="top"
+              value={hoySiento}
+              onChangeText={setHoySiento}
             />
           </View>
 
           {/* Botón Guardar */}
-          <Pressable style={styles.saveButton}>
+          <Pressable style={styles.saveButton} disabled={loading || !userId} onPress={handleGuardar}>
             <View style={styles.saveGradient}>
-              <Text style={styles.saveText}>Guardar</Text>
+              <Text style={styles.saveText}>{loading ? 'Guardando…' : 'Guardar'}</Text>
             </View>
           </Pressable>
+
+          {/* Lista de últimos registros */}
+          <View style={{ marginTop: 24 }}>
+            <Text style={{ color: '#fff', fontWeight: '700', marginBottom: 8 }}>Mis últimos registros</Text>
+            {(diarios || []).map((d:any) => (
+              <View key={d._id} style={{ backgroundColor:'#fff', borderRadius:12, padding:10, marginBottom:8 }}>
+                <Text style={{ fontWeight:'700', color:'#333' }}>{d.titulo || 'Diario'}</Text>
+                <Text style={{ color:'#555' }}>Fecha: {new Date(d.fecha || d.createdAt).toISOString().slice(0,10)}</Text>
+                {typeof d.calificacion === 'number' && (
+                  <Text style={{ color:'#555' }}>Calificación: {d.calificacion}</Text>
+                )}
+              </View>
+            ))}
+            {(!diarios || diarios.length===0) && (
+              <Text style={{ color:'#fff' }}>Aún no tienes registros.</Text>
+            )}
+          </View>
         </View>
       </ScrollView>
 
@@ -434,4 +528,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   modalButtonText: { color: "#fff", fontWeight: "700" },
+  errorBox: { backgroundColor: '#ffdddd', borderRadius: 10, padding: 10, margin: 12 },
+  errorText: { color: '#a22', fontWeight: '700' },
 });

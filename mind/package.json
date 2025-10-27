@@ -16,7 +16,8 @@
     "dev:emotional": "nodemon services/emocional/server.js",
     "dev:agenda": "nodemon services/agenda/server.js",
     "dev:all": "concurrently \"npm run dev:admin\" \"npm run dev:users\" \"npm run dev:emotional\" \"npm run dev:agenda\"",
-    "seed:superadmin": "node scripts/seed-superadmin.js"
+    "seed:superadmin": "node scripts/seed-superadmin.js",
+    "seed:menus": "node scripts/seed-default-menus.js"
   },
   "keywords": [
     "microservices",

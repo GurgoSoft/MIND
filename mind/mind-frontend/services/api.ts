@@ -44,6 +44,19 @@ const getAdminBaseUrl = () => {
 };
 const ADMIN_BASE_URL = getAdminBaseUrl();
 
+// Base URL para servicio emocional (diarios)
+const getEmotionalBaseUrl = () => {
+  const extra: any = Constants.expoConfig?.extra || {};
+  const publicEnv = process.env.EXPO_PUBLIC_EMOTIONAL_API_URL;
+  if (Platform.OS === 'android' && extra?.androidEmotionalApiUrl) return extra.androidEmotionalApiUrl;
+  if ((Platform.OS === 'ios' || Platform.OS === 'macos') && extra?.iosEmotionalApiUrl) return extra.iosEmotionalApiUrl;
+  if (publicEnv) return publicEnv;
+  if (extra?.emotionalApiUrl) return extra.emotionalApiUrl;
+  if (Platform.OS === 'android') return 'http://10.0.2.2:3003';
+  return 'http://localhost:3003';
+};
+const EMOTIONAL_BASE_URL = getEmotionalBaseUrl();
+
 async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<ApiResponse<T>> {
   const url = `${BASE_URL}${path}`;
   const token = await getToken();
@@ -153,6 +166,54 @@ async function adminFetch<T = any>(path: string, init: RequestInit = {}): Promis
   return json as ApiResponse<T>;
 }
 
+async function emotionalFetch<T = any>(path: string, init: RequestInit = {}): Promise<ApiResponse<T>> {
+  const url = `${EMOTIONAL_BASE_URL}${path}`;
+  const token = await getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(init.headers as Record<string, string>),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers,
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-store',
+    });
+  } catch (e: any) {
+    const err = new Error(`No se pudo conectar al servicio emocional (URL: ${url}).`) as any;
+    err.cause = e;
+    err.network = true;
+    throw err;
+  }
+
+  let json: ApiResponse<T> | null = null;
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try { json = await res.json(); }
+    catch {
+      const err = new Error(`Respuesta inválida del servidor (${res.status}).`) as any;
+      err.status = res.status; throw err;
+    }
+  } else if (res.status === 204) {
+    json = { success: res.ok } as any;
+  } else {
+    const text = await res.text();
+    json = { success: res.ok, message: text } as any;
+  }
+
+  if (!res.ok || json?.success === false) {
+    const msg = (json && json.message) || `Error ${res.status}`;
+    const err = new Error(msg) as any;
+    err.status = res.status; err.payload = json; throw err;
+  }
+  return json as ApiResponse<T>;
+}
+
 // Auth API
 export async function login(email: string, password: string) {
   return apiFetch<{ usuario: any; token: string }>(`/api/auth/login`, {
@@ -242,6 +303,34 @@ export async function getMenuTree() {
   });
 }
 
+// Listar todos los menús (opcionalmente filtrando activo)
+export async function listAllMenus(params?: { activo?: boolean }) {
+  const query = new URLSearchParams();
+  if (typeof params?.activo === 'boolean') query.append('activo', String(params.activo));
+  const q = query.toString();
+  return adminFetch<MenuItem[]>(`/api/admin/menus${q ? `?${q}` : ''}`, { method: 'GET' });
+}
+
+// CRUD de Menús (Administrativo)
+export async function listMenus(params?: { activo?: boolean }) {
+  const query = new URLSearchParams();
+  if (typeof params?.activo === 'boolean') query.append('activo', String(params.activo));
+  const q = query.toString();
+  return adminFetch<MenuItem[]>(`/api/admin/menus${q ? `?${q}` : ''}`, { method: 'GET' });
+}
+
+export async function createMenu(payload: Partial<MenuItem> & { nombre: string; orden: number; ruta?: string; icono?: string; menuSuperior?: string | null; activo?: boolean; }) {
+  return adminFetch<MenuItem>(`/api/admin/menus`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateMenu(id: string, payload: Partial<MenuItem>) {
+  return adminFetch<MenuItem>(`/api/admin/menus/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export async function deleteMenu(id: string) {
+  return adminFetch(`/api/admin/menus/${id}`, { method: 'DELETE' });
+}
+
 // Auditoría (Administrativo)
 export async function trackAdminAudit(payload: {
   entidad: string;
@@ -257,6 +346,7 @@ export async function trackAdminAudit(payload: {
 }
 
 export { BASE_URL, ADMIN_BASE_URL };
+export { EMOTIONAL_BASE_URL };
 
 // =============== Admin vistas ===============
 // Usuarios (desde microservicio de usuarios)
@@ -343,4 +433,47 @@ export async function updateEstado(id: string, payload: Partial<{ codigo: string
 
 export async function deleteEstado(id: string) {
   return adminFetch(`/api/admin/estados/${id}`, { method: 'DELETE' });
+}
+
+// Personas (usuarios)
+export async function listPersonas(params?: { page?: number; limit?: number; q?: string }) {
+  if (params?.q) {
+    const query = new URLSearchParams();
+    query.append('query', params.q);
+    return apiFetch(`/api/users/personas/search/name?${query.toString()}`, { method: 'GET' });
+  }
+  const query = new URLSearchParams();
+  if (params?.page) query.append('page', String(params.page));
+  if (params?.limit) query.append('limit', String(params.limit));
+  const q = query.toString();
+  return apiFetch(`/api/users/personas${q ? `?${q}` : ''}`, { method: 'GET' });
+}
+
+// Diarios emocionales
+export async function listDiarios(params?: { idUsuario?: string; fechaInicio?: string; fechaFin?: string; page?: number; limit?: number }) {
+  const query = new URLSearchParams();
+  if (params?.idUsuario) query.append('idUsuario', params.idUsuario);
+  if (params?.fechaInicio) query.append('fechaInicio', params.fechaInicio);
+  if (params?.fechaFin) query.append('fechaFin', params.fechaFin);
+  if (params?.page) query.append('page', String(params.page));
+  if (params?.limit) query.append('limit', String(params.limit));
+  const q = query.toString();
+  return emotionalFetch(`/api/emotional/diarios${q ? `?${q}` : ''}`, { method: 'GET' });
+}
+
+// Crear diario emocional (mínimo: diario.fecha, diario.titulo; opcional: calificacion, descripcion, idUsuario)
+export async function createDiario(payload: {
+  diario: {
+    idUsuario?: string;
+    fecha: string; // ISO
+    titulo: string;
+    calificacion?: number;
+    descripcion?: string;
+  };
+  emociones?: Array<{ idEmocion: string; intensidad: number }>;
+  sensaciones?: Array<{ idSensacion: string; intensidad: number }>;
+  sintomas?: Array<{ idSintoma: string; intensidad: number }>;
+  sentimientos?: Array<{ idSentimiento: string; intensidad: number }>;
+}) {
+  return emotionalFetch(`/api/emotional/diarios`, { method: 'POST', body: JSON.stringify(payload) });
 }

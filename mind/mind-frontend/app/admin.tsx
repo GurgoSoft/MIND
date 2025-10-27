@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, FlatList, Modal, Alert, StatusBar, SafeAreaView, RefreshControl, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, FlatList, Modal, Alert, StatusBar, SafeAreaView, RefreshControl, Platform, useWindowDimensions, TouchableWithoutFeedback } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
-import { listUsers, listEstados, listAccesos, listNotificaciones, filterEstados, createEstado, updateEstado, deleteEstado, listTiposUsuario, createAcceso, updateAcceso, deleteAcceso, createNotificacion, updateNotificacion, deleteNotificacion, register, updateUser } from '../services/api';
+import { listUsers, listEstados, listAccesos, listNotificaciones, filterEstados, createEstado, updateEstado, deleteEstado, listTiposUsuario, createAcceso, updateAcceso, deleteAcceso, createNotificacion, updateNotificacion, deleteNotificacion, register, updateUser, listDiarios, listPersonas, listMenus, updateMenu } from '../services/api';
 
 type IoniconsName = ComponentProps<typeof Ionicons>["name"];
 type UserStateKey = '0001'|'0002'|'0003'|'0004'|'0005'|'0006';
@@ -125,8 +125,10 @@ const UserDetailsModal = ({ visible, user, onClose, onUpdateStatus, onChangeRole
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.modalOverlay}>
+          <TouchableWithoutFeedback>
+            <View style={styles.modalContent}>
           <View style={[styles.modalHeader, { backgroundColor: state.color }]}>
             <Text style={styles.modalTitle}>Detalles del Usuario</Text>
             <TouchableOpacity onPress={onClose}>
@@ -201,8 +203,10 @@ const UserDetailsModal = ({ visible, user, onClose, onUpdateStatus, onChangeRole
               </View>
             </View>
           </ScrollView>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 };
@@ -211,9 +215,11 @@ const UserDetailsModal = ({ visible, user, onClose, onUpdateStatus, onChangeRole
 export default function UserManagementSystem() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
+  const isSmall = width < 480;
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<AdminUser[]>([]);
   const [searchText, setSearchText] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -231,14 +237,75 @@ export default function UserManagementSystem() {
     password: '',
     tipoCode: 'ADMIN' as 'SUPERADMIN'|'ADMIN'|'PACIENTE'|'ESPECIALISTA',
   });
+  const [createStep, setCreateStep] = useState<1|2>(1);
+  // Fecha de nacimiento (picker personalizado estilo Register)
+  const [dobModalOpen, setDobModalOpen] = useState(false);
+  const [dobStep, setDobStep] = useState<'year'|'month'|'day'>('year');
+  const [tempYear, setTempYear] = useState<number>(new Date().getFullYear());
+  const [tempMonth, setTempMonth] = useState<number | null>(null); // 1-12
+  const [tempDay, setTempDay] = useState<number | null>(null);
+  const monthsEs = [
+    'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
+  ];
+  const today = new Date();
+  const clampToMax = (y: number, m: number, d: number) => {
+    const selected = new Date(y, m - 1, d);
+    return selected > today ? today : selected;
+  };
+  const daysInMonth = (y: number, m: number) => new Date(y, m, 0).getDate();
+  const isFutureMonth = (y: number, m: number) => y === today.getFullYear() && m > (today.getMonth() + 1);
+  const isFutureDay = (y: number, m: number, d: number) => y === today.getFullYear() && m === (today.getMonth() + 1) && d > today.getDate();
+  function openDobModal() {
+    // Prefijar con la fecha actual seleccionada si existe
+    try {
+      if (createForm.fechaNacimiento) {
+        const d = new Date(createForm.fechaNacimiento);
+        if (!isNaN(d.getTime())) {
+          setTempYear(d.getFullYear());
+          setTempMonth(d.getMonth() + 1);
+          setTempDay(d.getDate());
+        } else {
+          setTempYear(today.getFullYear()); setTempMonth(null); setTempDay(null);
+        }
+      } else {
+        setTempYear(today.getFullYear()); setTempMonth(null); setTempDay(null);
+      }
+    } catch {
+      setTempYear(today.getFullYear()); setTempMonth(null); setTempDay(null);
+    }
+    setDobStep('year');
+    setDobModalOpen(true);
+  }
+  function confirmDob() {
+    if (!tempYear || !tempMonth || !tempDay) return;
+    const final = clampToMax(tempYear, tempMonth, tempDay);
+    setCreateForm(s=> ({...s, fechaNacimiento: new Date(final).toISOString().slice(0,10)}));
+    setDobModalOpen(false);
+  }
+  function formatFecha(iso: string) {
+    if (!iso) return 'Seleccionar fecha';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return 'Seleccionar fecha';
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  const [showPassword, setShowPassword] = useState(false);
+  const [roleModalOpen, setRoleModalOpen] = useState(false);
 
   // NUEVO: datos admin
   const [estados, setEstados] = useState([]);
   const [accesos, setAccesos] = useState([]);
   const [notificaciones, setNotificaciones] = useState([]);
-  const [section, setSection] = useState<'usuarios'|'estados'|'mensajes'|'notificaciones'|'registros'|'personas'>('usuarios');
+  const [section, setSection] = useState<'usuarios'|'estados'|'mensajes'|'notificaciones'|'registros'|'personas'|'menu'>('usuarios');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  // Menú derecho
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Toast simple
+  const [toast, setToast] = useState<{ type: 'success'|'error'|'info'; message: string } | null>(null);
 
   // NUEVO: filtros y estado modal para estados
   const [estadoFilters, setEstadoFilters] = useState({ nombre: '', simbolo: '', modulo: '', visible: undefined as undefined | boolean });
@@ -247,6 +314,80 @@ export default function UserManagementSystem() {
   const [estadoForm, setEstadoForm] = useState({ codigo: '', nombre: '', simbolo: '', color: '', descripcion: '', modulo: 'TODOS', visible: true });
   const [estadoPage, setEstadoPage] = useState(1);
   const [estadoPageSize, setEstadoPageSize] = useState(10);
+
+  // Accesos/Mensajes: modal
+  const [accesoModalOpen, setAccesoModalOpen] = useState(false);
+  const [accesoEditing, setAccesoEditing] = useState<any>(null);
+  const [accesoForm, setAccesoForm] = useState({ nombre: '', codigo: '', scope: 'READ' as 'READ'|'WRITE'|'DELETE'|'ADMIN', visible: true });
+
+  // Notificaciones: modal
+  const [notifModalOpen, setNotifModalOpen] = useState(false);
+  const [notifEditing, setNotifEditing] = useState<any>(null);
+  const [notifForm, setNotifForm] = useState({ titulo: '', asunto: '', destinatario: '', tipo: '', visible: true, contenido: '' });
+
+  // Personas
+  const [personas, setPersonas] = useState<any[]>([]);
+  const [qPersona, setQPersona] = useState('');
+  const [personasPage, setPersonasPage] = useState(1);
+  const [personasTotal, setPersonasTotal] = useState(0);
+
+  // Diarios
+  const [diarios, setDiarios] = useState<any[]>([]);
+  const [diarioFilters, setDiarioFilters] = useState({ idUsuario: '', fechaInicio: '', fechaFin: '' });
+  const [diariosPage, setDiariosPage] = useState(1);
+  const [diariosTotal, setDiariosTotal] = useState(0);
+
+  // Menús
+  const [menus, setMenus] = useState<any[]>([]);
+  const [menusLoading, setMenusLoading] = useState(false);
+  const [menuModalOpen, setMenuModalOpen] = useState(false);
+  const [menuEditing, setMenuEditing] = useState<any|null>(null);
+  const [menuForm, setMenuForm] = useState<{ nombre: string; ruta?: string; icono?: string; orden: string; menuSuperiorId?: string|null; activo: boolean }>({ nombre: '', ruta: '', icono: '', orden: '0', menuSuperiorId: null, activo: true });
+  const [menusRootOnly, setMenusRootOnly] = useState(true);
+  function openNewMenu(){
+    setMenuEditing(null);
+    setMenuForm({ nombre:'', ruta:'', icono:'', orden:'0', menuSuperiorId: null, activo: true });
+    setMenuModalOpen(true);
+  }
+  function openEditMenu(m:any){
+    setMenuEditing(m);
+    const parentId = typeof m.menuSuperior === 'string' ? m.menuSuperior : (m.menuSuperior?._id || null);
+    setMenuForm({ nombre: m.nombre || '', ruta: m.ruta || '', icono: m.icono || '', orden: String(m.orden ?? 0), menuSuperiorId: parentId, activo: m.activo !== false });
+    setMenuModalOpen(true);
+  }
+  async function saveMenu(){
+    try{
+      if(!menuForm.nombre.trim()) { setToast({ type:'error', message:'Nombre es requerido' }); return; }
+      const ordenNum = Number(menuForm.orden);
+      if(Number.isNaN(ordenNum)) { setToast({ type:'error', message:'Orden debe ser numérico' }); return; }
+      const payload:any = {
+        nombre: menuForm.nombre.trim(),
+        ruta: menuForm.ruta?.trim() || undefined,
+        icono: menuForm.icono?.trim() || undefined,
+        orden: ordenNum,
+        menuSuperior: menuForm.menuSuperiorId || null,
+        activo: !!menuForm.activo,
+      };
+      if(menuEditing?._id){
+        await updateMenu(menuEditing._id, payload);
+      } else {
+        await (await import('../services/api')).createMenu(payload);
+      }
+      setMenuModalOpen(false);
+      const mm:any = await listMenus();
+      setMenus(mm?.data || []);
+      setToast({ type:'success', message:'Menú guardado' });
+    } catch(e:any){ setToast({ type:'error', message: e?.payload?.message || e?.message || 'No se pudo guardar el menú' }); }
+  }
+  async function removeMenu(m:any){
+    try{
+      const del = (await import('../services/api')).deleteMenu; 
+      await del(m._id);
+      const mm:any = await listMenus();
+      setMenus(mm?.data || []);
+      setToast({ type:'success', message:'Menú eliminado' });
+    }catch(e:any){ setToast({ type:'error', message: e?.payload?.message || e?.message || 'No se pudo eliminar' }); }
+  }
 
   useEffect(() => {
     loadAll();
@@ -298,10 +439,28 @@ export default function UserManagementSystem() {
       setEstados(estRes?.data || []);
       setAccesos(accRes?.data || []);
       setNotificaciones(notifRes?.data || []);
+      // Personas inicial
+      try {
+        const per = await listPersonas({ page: 1, limit: 10 }) as any;
+        setPersonas(per?.data || []);
+        setPersonasTotal(per?.total || (per?.data?.length || 0));
+      } catch {}
+      // Diarios inicial
+      try {
+        const d = await listDiarios({ page: 1, limit: 10 }) as any;
+        setDiarios(d?.data || []);
+        setDiariosTotal(d?.total || (d?.data?.length || 0));
+      } catch {}
       // Tipos de usuario para crear/cambiar rol
       try {
         const tu = await listTiposUsuario() as any;
         setTiposUsuario(tu?.data || []);
+      } catch {}
+
+      // Menús (lista completa para administración)
+      try {
+        const mm:any = await listMenus();
+        setMenus(mm?.data || []);
       } catch {}
     } catch (e: any) {
       setErrorMsg(e?.message || 'Error cargando datos de administración');
@@ -362,9 +521,9 @@ export default function UserManagementSystem() {
               // Recargar todos los datos para asegurar consistencia
               await loadAll();
               
-              Alert.alert('Éxito', 'Estado actualizado correctamente');
+              setToast({ type: 'success', message: 'Estado actualizado correctamente' });
             } catch (error: any) {
-              Alert.alert('Error', error?.message || 'No se pudo actualizar el estado');
+              setToast({ type: 'error', message: error?.message || 'No se pudo actualizar el estado' });
             }
           }
         }
@@ -442,8 +601,9 @@ export default function UserManagementSystem() {
       }
       setEstadoModalOpen(false);
       await applyEstadoFilters();
+      setToast({ type: 'success', message: 'Estado guardado' });
     } catch (e:any) {
-      Alert.alert('Error', e?.payload?.message || e?.message || 'Error guardando estado');
+      setToast({ type: 'error', message: e?.payload?.message || e?.message || 'Error guardando estado' });
     }
   }
   // NUEVO: eliminar estado
@@ -451,15 +611,96 @@ export default function UserManagementSystem() {
     Alert.alert('Confirmar', `¿Eliminar el estado ${e.nombre}?`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: async () => {
-        try { await deleteEstado(e._id); await applyEstadoFilters(); }
-        catch (err:any) { Alert.alert('Error', err?.payload?.message || err?.message || 'Error eliminando estado'); }
+        try { await deleteEstado(e._id); await applyEstadoFilters(); setToast({ type: 'success', message: 'Estado eliminado' }); }
+        catch (err:any) { setToast({ type: 'error', message: err?.payload?.message || err?.message || 'Error eliminando estado' }); }
       }}
     ]);
+  }
+
+  // Accesos (mensajes) helpers
+  function openNewAcceso() {
+    setAccesoEditing(null);
+    setAccesoForm({ nombre: '', codigo: '', scope: 'READ', visible: true });
+    setAccesoModalOpen(true);
+  }
+  function openEditAcceso(a:any) {
+    setAccesoEditing(a);
+    setAccesoForm({ nombre: a.nombre || '', codigo: a.codigo || '', scope: (a.scope || 'READ'), visible: a.visible ?? true });
+    setAccesoModalOpen(true);
+  }
+  async function saveAcceso() {
+    try {
+      if (!accesoForm.nombre.trim() || !accesoForm.codigo.trim()) { Alert.alert('Validación','Código y nombre requeridos'); return; }
+      if (accesoEditing?._id) await updateAcceso(accesoEditing._id, accesoForm);
+      else await createAcceso(accesoForm as any);
+      setAccesoModalOpen(false);
+      const accRes:any = await listAccesos();
+      setAccesos(accRes?.data || []);
+    } catch (e:any) { Alert.alert('Error', e?.payload?.message || e?.message || 'Error guardando acceso'); }
+  }
+  async function removeAcceso(a:any) {
+    Alert.alert('Confirmar',`¿Eliminar "${a.nombre}"?`,[
+      { text:'Cancelar', style:'cancel' },
+      { text:'Eliminar', style:'destructive', onPress: async()=>{
+        try { await deleteAcceso(a._id); const acc:any = await listAccesos(); setAccesos(acc?.data||[]); }
+        catch(err:any){ Alert.alert('Error', err?.payload?.message || err?.message || 'Error eliminando acceso'); }
+      } }
+    ]);
+  }
+
+  // Notificaciones helpers
+  function openNewNotif() {
+    setNotifEditing(null);
+    setNotifForm({ titulo: '', asunto: '', destinatario: '', tipo: '', visible: true, contenido: '' });
+    setNotifModalOpen(true);
+  }
+  function openEditNotif(n:any) {
+    setNotifEditing(n);
+    setNotifForm({ titulo: n.titulo || n.asunto || '', asunto: n.asunto || '', destinatario: n.destinatario || '', tipo: n.idTipoNotificacion?.nombre || n.tipo || '', visible: n.visible ?? true, contenido: n.mensaje || n.contenido || '' });
+    setNotifModalOpen(true);
+  }
+  async function saveNotif() {
+    try {
+      if (!notifForm.titulo.trim() && !notifForm.asunto.trim()) { Alert.alert('Validación','Título o asunto requerido'); return; }
+      if (notifEditing?._id) await updateNotificacion(notifEditing._id, notifForm as any);
+      else await createNotificacion(notifForm as any);
+      setNotifModalOpen(false);
+      const n:any = await listNotificaciones(); setNotificaciones(n?.data||[]);
+    } catch(e:any){ Alert.alert('Error', e?.payload?.message || e?.message || 'Error guardando notificación'); }
+  }
+  async function removeNotif(n:any){
+    Alert.alert('Confirmar',`¿Eliminar notificación "${n.titulo || n.asunto || 'Notificación'}"?`,[
+      { text:'Cancelar', style:'cancel' },
+      { text:'Eliminar', style:'destructive', onPress: async()=>{
+        try{ await deleteNotificacion(n._id); const res:any = await listNotificaciones(); setNotificaciones(res?.data||[]); }
+        catch(err:any){ Alert.alert('Error', err?.payload?.message || err?.message || 'Error eliminando notificación'); }
+      }}
+    ]);
+  }
+
+  // Personas/Diarios loaders
+  async function loadPersonas() {
+    const res:any = await listPersonas({ page: personasPage, limit: 10, q: qPersona || undefined });
+    setPersonas(res?.data || []);
+    setPersonasTotal(res?.total || (res?.data?.length || 0));
+  }
+  async function loadDiarios() {
+    const res:any = await listDiarios({ page: diariosPage, limit: 10, ...diarioFilters, fechaInicio: diarioFilters.fechaInicio || undefined, fechaFin: diarioFilters.fechaFin || undefined, idUsuario: diarioFilters.idUsuario || undefined });
+    setDiarios(res?.data || []);
+    setDiariosTotal(res?.total || (res?.data?.length || 0));
   }
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#6B5B95" />
+
+      {/* Toast */}
+      {toast && (
+        <View style={[styles.toast, toast.type==='success' && styles.toastSuccess, toast.type==='error' && styles.toastError]}>
+          <Text style={styles.toastText}>{toast.message}</Text>
+          <TouchableOpacity onPress={()=> setToast(null)}><Ionicons name="close" size={18} color="#fff" /></TouchableOpacity>
+        </View>
+      )}
 
       {/* Header */}
       <View style={styles.header}>
@@ -470,19 +711,52 @@ export default function UserManagementSystem() {
           <Text style={styles.appTitle}>Panel de Administración</Text>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent} style={styles.tabsScroll}>
-          {(['usuarios','estados','mensajes','notificaciones','registros','personas'] as const).map((s) => (
+          {(['usuarios','estados','mensajes','notificaciones','registros','personas','menu'] as const).map((s) => (
             <TouchableOpacity
               key={s}
               style={[styles.tabPill, section===s && styles.tabPillActive]}
               onPress={() => setSection(s)}
             >
               <Text style={[styles.tabPillText, section===s && styles.tabPillTextActive]}>
-                {s === 'usuarios' ? 'Usuarios' : s === 'estados' ? 'Estados' : s === 'mensajes' ? 'Mensajes' : s === 'notificaciones' ? 'Notificaciones' : s === 'registros' ? 'Registros Diarios' : 'Registro de Personas'}
+                {s === 'usuarios' ? 'Usuarios' : s === 'estados' ? 'Estados' : s === 'mensajes' ? 'Mensajes' : s === 'notificaciones' ? 'Notificaciones' : s === 'registros' ? 'Registros Diarios' : s === 'personas' ? 'Registro de Personas' : 'Menú'}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
+        {/* Menú derecho desplegable */}
+        <View style={styles.headerRightArea}>
+          <TouchableOpacity onPress={()=> setMenuOpen(o=>!o)} style={styles.userBadge} accessibilityLabel="Menú de administración">
+            <Ionicons name="person-circle" color="#fff" size={22} />
+            <Text style={styles.userBadgeText}>Administración</Text>
+            <Ionicons name={menuOpen? 'chevron-up' : 'chevron-down'} color="#fff" size={16} />
+          </TouchableOpacity>
+          {menuOpen && (
+            <View style={[styles.dropdownMenu, isSmall && styles.dropdownMenuMobile]}>
+              {[
+                { key:'usuarios', label:'Usuarios', icon:'people-outline' },
+                { key:'estados', label:'Estados', icon:'color-palette-outline' },
+                { key:'mensajes', label:'Mensajes', icon:'document-text-outline' },
+                { key:'notificaciones', label:'Notificaciones', icon:'notifications-outline' },
+                { key:'registros', label:'Registros Diarios', icon:'newspaper-outline' },
+                { key:'personas', label:'Registro de Personas', icon:'id-card-outline' },
+                { key:'menu', label:'Menú', icon:'list-outline' },
+              ].map(mi => (
+                <TouchableOpacity key={mi.key} style={styles.dropdownItem} onPress={()=> { setSection(mi.key as any); setMenuOpen(false); }}>
+                  <Ionicons name={mi.icon as any} size={16} color="#333" />
+                  <Text style={styles.dropdownItemText}>{mi.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
       </View>
+
+      {/* Backdrop para cerrar el menú al tocar fuera */}
+      {menuOpen && (
+        <TouchableWithoutFeedback onPress={()=> setMenuOpen(false)}>
+          <View style={styles.menuBackdrop} />
+        </TouchableWithoutFeedback>
+      )}
 
       {/* Contenido centrado y responsive */}
       <View style={styles.pageBody}>
@@ -497,28 +771,31 @@ export default function UserManagementSystem() {
         <View style={{ flex: 1 }}>
           {/* Search Bar */}
           <View style={styles.searchContainer}>
-            <View style={[styles.searchBar, styles.searchBarWide]}>
-              <Ionicons name="search" size={20} color="#666" />
+            <View style={[styles.searchBar, styles.searchBarWide, searchFocused && styles.searchBarFocused]}>
+              <Ionicons name="search" size={18} color={searchFocused ? '#6B5B95' : '#9aa0a6'} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Buscar por nombre o email..."
+                placeholder="Buscar usuario"
                 value={searchText}
                 onChangeText={setSearchText}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+                placeholderTextColor="#94a3b8"
+                selectionColor="#6B5B95"
+                returnKeyType="search"
               />
-              <TouchableOpacity 
-                onPress={onRefresh} 
-                style={styles.refreshButton}
-                disabled={refreshing}
-              >
-                <Ionicons 
-                  name="refresh" 
-                  size={20} 
-                  color={refreshing ? "#ccc" : "#666"} 
-                />
-              </TouchableOpacity>
+              {!!searchText && (
+                <TouchableOpacity 
+                  onPress={() => setSearchText('')} 
+                  style={styles.searchClearButton}
+                  accessibilityLabel="Limpiar búsqueda"
+                >
+                  <Ionicons name="close-circle" size={18} color="#b0b8c1" />
+                </TouchableOpacity>
+              )}
             </View>
             <View style={[styles.userActionsRow, isDesktop && styles.userActionsRowWide]}>
-              <TouchableOpacity style={styles.primaryButtonSm} onPress={() => setCreateUserOpen(true)}>
+              <TouchableOpacity style={styles.primaryButtonSm} onPress={() => { setCreateStep(1); setCreateUserOpen(true); }}>
                 <Text style={styles.primaryButtonSmText}>+ Adicionar Usuario</Text>
               </TouchableOpacity>
               {isDesktop ? (
@@ -622,80 +899,239 @@ export default function UserManagementSystem() {
             onChangeRole={handleChangeRole}
           />
 
-          {/* Modal crear usuario */}
+          {/* Modal crear usuario con pasos */}
           <Modal visible={createUserOpen} transparent animationType="fade" onRequestClose={()=> setCreateUserOpen(false)}>
-            <View style={styles.modalOverlayCenter}>
-              <View style={[styles.modalCard, { backgroundColor: '#fff' }] }>
+            <TouchableWithoutFeedback onPress={()=> setCreateUserOpen(false)}>
+              <View style={styles.modalOverlayCenter}>
+                <TouchableWithoutFeedback>
+                  <View style={[styles.modalCard, { backgroundColor: '#fff' }]}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ fontSize: 16, fontWeight: '700' }}>Adicionar Usuario</Text>
                   <TouchableOpacity onPress={()=> setCreateUserOpen(false)}><Ionicons name="close" size={22} color="#333" /></TouchableOpacity>
                 </View>
-                <ScrollView style={{ marginTop: 10, maxHeight: 480 }}>
-                  <Text style={styles.formLabel}>Nombres*</Text>
-                  <TextInput style={styles.formInput} value={createForm.nombres} onChangeText={(t)=> setCreateForm(s=> ({...s, nombres:t}))} />
-                  <Text style={styles.formLabel}>Apellidos*</Text>
-                  <TextInput style={styles.formInput} value={createForm.apellidos} onChangeText={(t)=> setCreateForm(s=> ({...s, apellidos:t}))} />
-                  <Text style={styles.formLabel}>Documento*</Text>
-                  <TextInput style={styles.formInput} value={createForm.numDoc} onChangeText={(t)=> setCreateForm(s=> ({...s, numDoc:t}))} />
-                  <Text style={styles.formLabel}>Fecha Nacimiento (YYYY-MM-DD)*</Text>
-                  <TextInput style={styles.formInput} placeholder="2000-01-01" value={createForm.fechaNacimiento} onChangeText={(t)=> setCreateForm(s=> ({...s, fechaNacimiento:t}))} />
-                  <Text style={styles.formLabel}>Correo*</Text>
-                  <TextInput style={styles.formInput} keyboardType="email-address" autoCapitalize="none" value={createForm.email} onChangeText={(t)=> setCreateForm(s=> ({...s, email:t}))} />
-                  <Text style={styles.formLabel}>Contraseña*</Text>
-                  <TextInput style={styles.formInput} secureTextEntry value={createForm.password} onChangeText={(t)=> setCreateForm(s=> ({...s, password:t}))} />
-                  <Text style={styles.formLabel}>Rol</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-                    {(['SUPERADMIN','ADMIN','PACIENTE','ESPECIALISTA'] as const).map(rc => (
-                      <TouchableOpacity key={rc} style={[styles.roleChip, createForm.tipoCode===rc && { backgroundColor: '#6B5B95' }]} onPress={()=> setCreateForm(s=> ({...s, tipoCode: rc}))}>
-                        <Text style={[styles.roleChipText, createForm.tipoCode===rc && { color: '#fff' }]}>{rc}</Text>
-                      </TouchableOpacity>
-                    ))}
+                <View style={{ marginTop: 10 }}>
+                  <View style={styles.stepperRow}>
+                    <View style={[styles.stepDot, createStep>=1 && styles.stepDotActive]} />
+                    <View style={styles.stepLine} />
+                    <View style={[styles.stepDot, createStep>=2 && styles.stepDotActive]} />
                   </View>
-                </ScrollView>
-                <TouchableOpacity disabled={creating} style={[styles.tableFilterButton, { marginTop: 14, backgroundColor: creating? '#aaa':'#6AB9D2' }]} onPress={async ()=>{
-                  // Validación mínima
-                  if (!createForm.nombres.trim() || !createForm.apellidos.trim() || !createForm.numDoc.trim() || !createForm.fechaNacimiento.trim() || !createForm.email.trim() || !createForm.password) {
-                    Alert.alert('Validación', 'Todos los campos marcados con * son obligatorios.');
-                    return;
-                  }
-                  setCreating(true);
-                  try {
-                    // Resolver idTipoUsuario por código
-                    let tipos = tiposUsuario;
-                    if (!tipos || tipos.length === 0) {
-                      try { const tu = await listTiposUsuario() as any; tipos = tu?.data || []; setTiposUsuario(tipos); } catch {}
-                    }
-                    const match = (tipos || []).find((t:any) => (t.codigo || t.nmTipoUsuario || '').toUpperCase() === createForm.tipoCode);
-                    const idTipo = match?._id || createForm.tipoCode;
-                    const payload = {
-                      persona: {
-                        nombres: createForm.nombres.trim(),
-                        apellidos: createForm.apellidos.trim(),
-                        numDoc: createForm.numDoc.trim(),
-                        fechaNacimiento: new Date(createForm.fechaNacimiento).toISOString(),
-                      },
-                      usuario: {
-                        idTipoUsuario: idTipo,
-                        email: createForm.email.trim(),
-                        passwordHash: createForm.password,
-                      }
-                    };
-                    await register(payload as any);
-                    setCreateUserOpen(false);
-                    // recargar usuarios
-                    await loadAll();
-                    Alert.alert('Usuario creado', 'El usuario fue creado correctamente.');
-                  } catch (e:any) {
-                    Alert.alert('Error', e?.payload?.message || e?.message || 'No se pudo crear el usuario');
-                  } finally {
-                    setCreating(false);
-                  }
-                }}>
-                  <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>{creating? 'Guardando...':'Guardar'}</Text>
-                </TouchableOpacity>
+                  {createStep === 1 && (
+                    <ScrollView style={{ maxHeight: 420 }}>
+                      <Text style={styles.formLabel}>Nombres*</Text>
+                      <TextInput style={styles.formInput} value={createForm.nombres} onChangeText={(t)=> setCreateForm(s=> ({...s, nombres:t}))} />
+                      <Text style={styles.formLabel}>Apellidos*</Text>
+                      <TextInput style={styles.formInput} value={createForm.apellidos} onChangeText={(t)=> setCreateForm(s=> ({...s, apellidos:t}))} />
+                      <Text style={styles.formLabel}>Documento*</Text>
+                      <TextInput style={styles.formInput} keyboardType="numeric" value={createForm.numDoc} onChangeText={(t)=> setCreateForm(s=> ({...s, numDoc:t.replace(/[^0-9]/g,'')}))} />
+                      <Text style={styles.formLabel}>Fecha Nacimiento*</Text>
+                      <TouchableOpacity style={[styles.formInput, { flexDirection:'row', alignItems:'center' }] } onPress={openDobModal}>
+                        <Ionicons name="calendar-outline" size={18} color="#666" />
+                        <Text style={{ marginLeft: 8, color:'#333' }}>{formatFecha(createForm.fechaNacimiento)}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.tableFilterButton, { marginTop: 14 }]} onPress={()=> setCreateStep(2)}>
+                        <Text style={{ color:'#fff', fontWeight:'700', textAlign:'center' }}>Continuar</Text>
+                      </TouchableOpacity>
+                    </ScrollView>
+                  )}
+                  {createStep === 2 && (
+                    <ScrollView style={{ maxHeight: 420 }}>
+                      <Text style={styles.formLabel}>Correo*</Text>
+                      <TextInput style={styles.formInput} keyboardType="email-address" autoCapitalize="none" value={createForm.email} onChangeText={(t)=> setCreateForm(s=> ({...s, email:t}))} />
+                      <Text style={styles.formLabel}>Contraseña*</Text>
+                      <View style={{ position:'relative' }}>
+                        <TextInput style={[styles.formInput, { paddingRight: 80 }]} secureTextEntry={!showPassword} value={createForm.password} onChangeText={(t)=> setCreateForm(s=> ({...s, password:t}))} />
+                        <TouchableOpacity onPress={()=> setShowPassword(s=> !s)} style={{ position:'absolute', right:40, top:12, padding:4 }}>
+                          <Ionicons name={showPassword? 'eye-off-outline':'eye-outline'} size={18} color="#666" />
+                        </TouchableOpacity>
+                        <View style={{ position:'absolute', right:10, top:14 }}>
+                          <Text style={{ color: passwordStrength(createForm.password).color, fontWeight:'700' }}>{passwordStrength(createForm.password).label}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.formLabel}>Rol</Text>
+                      <TouchableOpacity onPress={()=> setRoleModalOpen(true)} style={[styles.formInput, { flexDirection:'row', alignItems:'center' }]}>
+                        <Ionicons name="person-outline" size={18} color="#666" />
+                        <Text style={{ marginLeft: 8, fontWeight:'700', color:'#333' }}>{createForm.tipoCode}</Text>
+                        <View style={{ marginLeft:'auto' }}><Ionicons name="chevron-down" size={18} color="#666" /></View>
+                      </TouchableOpacity>
+                      <View style={{ flexDirection:'row', gap:10, marginTop:12 }}>
+                        <TouchableOpacity style={[styles.secondaryButton, { flex:1 }]} onPress={()=> setCreateStep(1)}>
+                          <Text style={styles.secondaryButtonText}>Atrás</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity disabled={creating} style={[styles.tableFilterButton, { flex:1, backgroundColor: creating? '#aaa':'#6AB9D2' }]} onPress={async ()=>{
+                          if (!createForm.nombres.trim() || !createForm.apellidos.trim() || !createForm.numDoc.trim() || !createForm.fechaNacimiento.trim() || !createForm.email.trim() || !createForm.password) {
+                            setToast({ type:'error', message:'Todos los campos marcados con * son obligatorios.' });
+                            return;
+                          }
+                          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createForm.email)) { setToast({ type:'error', message:'Correo inválido' }); return; }
+                          setCreating(true);
+                          try {
+                            let tipos = tiposUsuario;
+                            if (!tipos || tipos.length === 0) {
+                              try { const tu = await listTiposUsuario() as any; tipos = tu?.data || []; setTiposUsuario(tipos); } catch {}
+                            }
+                            const match = (tipos || []).find((t:any) => (t.codigo || t.nmTipoUsuario || '').toUpperCase() === createForm.tipoCode);
+                            const idTipo = match?._id || createForm.tipoCode;
+                            // Convertir fechaNacimiento (YYYY-MM-DD) a ISO UTC para evitar desfases por zona horaria
+                            let fechaIso = '';
+                            try {
+                              const [y, m, d] = createForm.fechaNacimiento.split('-').map(Number);
+                              if (y && m && d) {
+                                const utcDate = new Date(Date.UTC(y, (m as number)-1, d as number));
+                                fechaIso = utcDate.toISOString();
+                              } else {
+                                fechaIso = new Date(createForm.fechaNacimiento).toISOString();
+                              }
+                            } catch {
+                              fechaIso = new Date(createForm.fechaNacimiento).toISOString();
+                            }
+                            const payload = {
+                              persona: {
+                                nombres: createForm.nombres.trim(),
+                                apellidos: createForm.apellidos.trim(),
+                                numDoc: createForm.numDoc.trim(),
+                                fechaNacimiento: fechaIso,
+                              },
+                              usuario: {
+                                idTipoUsuario: idTipo,
+                                email: createForm.email.trim(),
+                                passwordHash: createForm.password,
+                              }
+                            };
+                            await register(payload as any);
+                            setCreateUserOpen(false);
+                            await loadAll();
+                            setToast({ type:'success', message:'Usuario creado correctamente' });
+                          } catch (e:any) {
+                            setToast({ type:'error', message: e?.payload?.message || e?.message || 'No se pudo crear el usuario' });
+                          } finally {
+                            setCreating(false);
+                          }
+                        }}>
+                          <Text style={{ color:'#fff', fontWeight:'700', textAlign:'center' }}>{creating? 'Guardando...':'Guardar'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </ScrollView>
+                  )}
+                </View>
+                
+                {/* Modal seleccionar rol */}
+                <Modal visible={roleModalOpen} transparent animationType="fade" onRequestClose={()=> setRoleModalOpen(false)}>
+                  <TouchableWithoutFeedback onPress={()=> setRoleModalOpen(false)}>
+                    <View style={styles.modalOverlayCenter}>
+                      <TouchableWithoutFeedback>
+                        <View style={[styles.modalCard, { backgroundColor:'#fff' }]}>
+                      <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center' }}>
+                        <Text style={{ fontWeight:'700', fontSize:16 }}>Seleccionar Rol</Text>
+                        <TouchableOpacity onPress={()=> setRoleModalOpen(false)}><Ionicons name="close" size={22} color="#333"/></TouchableOpacity>
+                      </View>
+                      <View style={{ marginTop: 10 }}>
+                        {([
+                          { code:'SUPERADMIN', label:'Super Administrador', icon:'shield-checkmark', color:'#6AB9D2' },
+                          { code:'ADMIN', label:'Administrador', icon:'person-circle', color:'#D276C3' },
+                          { code:'PACIENTE', label:'Paciente', icon:'person-outline', color:'#40C9A2' },
+                          { code:'ESPECIALISTA', label:'Especialista', icon:'medkit-outline', color:'#7B68EE' },
+                        ] as const).map(o => (
+                          <TouchableOpacity key={o.code} style={styles.optionRow} onPress={()=> { setCreateForm(s=> ({...s, tipoCode: o.code})); setRoleModalOpen(false); }}>
+                            <Ionicons name={o.icon as any} size={18} color={o.color} />
+                            <Text style={styles.optionRowText}>{o.label}</Text>
+                            {createForm.tipoCode === o.code && <Ionicons name="checkmark" size={18} color={o.color} style={{ marginLeft: 'auto' }} />}
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                        </View>
+                      </TouchableWithoutFeedback>
+                    </View>
+                  </TouchableWithoutFeedback>
+                </Modal>
+
+                  </View>
+                </TouchableWithoutFeedback>
               </View>
-            </View>
+            </TouchableWithoutFeedback>
           </Modal>
+
+            {/* Modal selector de fecha de nacimiento (estilo Register) */}
+            <Modal visible={dobModalOpen} transparent animationType="fade" onRequestClose={()=> setDobModalOpen(false)}>
+              <TouchableWithoutFeedback onPress={()=> setDobModalOpen(false)}>
+                <View style={styles.modalOverlayCenter}>
+                  <TouchableWithoutFeedback>
+                    <View style={[styles.modalCard, { backgroundColor:'#fff' }]}>
+                      <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center' }}>
+                        <Text style={{ fontWeight:'700', fontSize:16 }}>Seleccionar fecha de nacimiento</Text>
+                        <TouchableOpacity onPress={()=> setDobModalOpen(false)}><Ionicons name="close" size={22} color="#333"/></TouchableOpacity>
+                      </View>
+                      <View style={{ marginTop: 10 }}>
+                        <View style={styles.stepRow}>
+                          <Text style={[styles.step, dobStep==='year' && styles.stepActive]}>Año</Text>
+                          <Text style={styles.stepSeparator}>›</Text>
+                          <Text style={[styles.step, dobStep==='month' && styles.stepActive]}>Mes</Text>
+                          <Text style={styles.stepSeparator}>›</Text>
+                          <Text style={[styles.step, dobStep==='day' && styles.stepActive]}>Día</Text>
+                        </View>
+
+                        {dobStep === 'year' && (
+                          <ScrollView style={{ maxHeight: 260 }} contentContainerStyle={styles.gridWrap}>
+                            {Array.from({ length: 120 }).map((_, idx) => {
+                              const year = today.getFullYear() - idx;
+                              return (
+                                <TouchableOpacity key={year} style={[styles.gridItem, tempYear === year && styles.gridItemActive]} onPress={()=> { setTempYear(year); setDobStep('month'); }}>
+                                  <Text style={styles.gridText}>{year}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </ScrollView>
+                        )}
+
+                        {dobStep === 'month' && (
+                          <View>
+                            <ScrollView style={{ maxHeight: 260 }}>
+                              <View style={styles.monthsWrap}>
+                                {monthsEs.map((m, i) => {
+                                  const monthNumber = i + 1;
+                                  const disabled = isFutureMonth(tempYear, monthNumber);
+                                  return (
+                                    <TouchableOpacity key={m} disabled={disabled} style={[styles.monthItem, tempMonth === monthNumber && styles.gridItemActive, disabled && styles.disabledItem]} onPress={()=> { setTempMonth(monthNumber); setDobStep('day'); }}>
+                                      <Text style={[styles.gridText, { color: disabled? '#999':'#333' }]}>{m}</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </ScrollView>
+                            <View style={{ marginTop: 8 }}>
+                              <TouchableOpacity onPress={()=> setDobStep('year')}><Text style={styles.linkCta}>Atrás</Text></TouchableOpacity>
+                            </View>
+                          </View>
+                        )}
+
+                        {dobStep === 'day' && tempMonth && (
+                          <View>
+                            <ScrollView style={{ maxHeight: 260 }}>
+                              <View style={styles.daysWrap}>
+                                {Array.from({ length: daysInMonth(tempYear, tempMonth) }).map((_, i) => {
+                                  const d = i + 1;
+                                  const disabled = isFutureDay(tempYear, tempMonth!, d);
+                                  return (
+                                    <TouchableOpacity key={d} disabled={disabled} style={[styles.dayItem, tempDay === d && styles.gridItemActive, disabled && styles.disabledItem]} onPress={()=> { setTempDay(d); }}>
+                                      <Text style={[styles.gridText, { color: disabled? '#999':'#333' }]}>{d.toString().padStart(2,'0')}</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </ScrollView>
+                            <View style={{ flexDirection:'row', justifyContent:'space-between', marginTop: 8 }}>
+                              <TouchableOpacity onPress={()=> setDobStep('month')}><Text style={styles.linkCta}>Atrás</Text></TouchableOpacity>
+                              <TouchableOpacity style={[styles.tableFilterButton, { minWidth: 140 }]} onPress={confirmDob} disabled={!(tempYear && tempMonth && tempDay)}>
+                                <Text style={{ color:'#fff', fontWeight:'700' }}>Confirmar</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableWithoutFeedback>
+                </View>
+              </TouchableWithoutFeedback>
+            </Modal>
         </View>
       )}
 
@@ -803,8 +1239,10 @@ export default function UserManagementSystem() {
 
           {/* Modal crear/editar */}
           <Modal visible={estadoModalOpen} transparent animationType="fade" onRequestClose={()=>setEstadoModalOpen(false)}>
-            <View style={styles.modalOverlayCenter}>
-              <View style={[styles.modalCard, { backgroundColor: '#fff' }] }>
+            <TouchableWithoutFeedback onPress={()=> setEstadoModalOpen(false)}>
+              <View style={styles.modalOverlayCenter}>
+                <TouchableWithoutFeedback>
+                  <View style={[styles.modalCard, { backgroundColor: '#fff' }]}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ fontSize: 16, fontWeight: '700' }}>{estadoEditing? 'Editar Estado' : 'Adicionar Estado'}</Text>
                   <TouchableOpacity onPress={()=>setEstadoModalOpen(false)}><Ionicons name="close" size={22} color="#333" /></TouchableOpacity>
@@ -830,51 +1268,257 @@ export default function UserManagementSystem() {
                     <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>Guardar</Text>
                   </TouchableOpacity>
                 </View>
+                  </View>
+                </TouchableWithoutFeedback>
               </View>
-            </View>
+            </TouchableWithoutFeedback>
           </Modal>
         </View>
       )}
 
       {section === 'mensajes' && (
         <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <TouchableOpacity onPress={openNewAcceso} style={[styles.tableFilterButton, { backgroundColor: '#6B5B95' }]}>
+              <Text style={{ color:'#fff', fontWeight:'700' }}>+ Nuevo Mensaje/Acceso</Text>
+            </TouchableOpacity>
+          </View>
           {(accesos || []).map((a: any) => (
             <View key={a._id} style={{ backgroundColor: '#fff', borderRadius: 10, padding: 12, marginBottom: 10 }}>
               <Text style={{ fontWeight: '700' }}>{a.nombre}</Text>
               <Text style={{ color: '#666' }}>Código: {a.codigo}</Text>
               {a.scope ? <Text style={{ color: '#666' }}>Scope: {a.scope}</Text> : null}
+              <View style={{ flexDirection:'row', gap: 10, marginTop: 8 }}>
+                <TouchableOpacity onPress={()=> openEditAcceso(a)}><Ionicons name="create-outline" size={18} color="#666" /></TouchableOpacity>
+                <TouchableOpacity onPress={()=> removeAcceso(a)}><Ionicons name="trash-outline" size={18} color="#C44" /></TouchableOpacity>
+              </View>
             </View>
           ))}
           {(!accesos || accesos.length === 0) && (
             <Text style={{ color: '#666' }}>Sin mensajes/accesos</Text>
           )}
+
+          {/* Modal acceso */}
+          <Modal visible={accesoModalOpen} transparent animationType="fade" onRequestClose={()=> setAccesoModalOpen(false)}>
+            <TouchableWithoutFeedback onPress={()=> setAccesoModalOpen(false)}>
+              <View style={styles.modalOverlayCenter}>
+                <TouchableWithoutFeedback>
+                  <View style={[styles.modalCard, { backgroundColor:'#fff' }] }>
+                <View style={{ flexDirection: 'row', justifyContent:'space-between', alignItems:'center' }}>
+                  <Text style={{ fontWeight:'700', fontSize:16 }}>{accesoEditing? 'Editar Mensaje/Acceso':'Nuevo Mensaje/Acceso'}</Text>
+                  <TouchableOpacity onPress={()=> setAccesoModalOpen(false)}><Ionicons name="close" size={22} color="#333"/></TouchableOpacity>
+                </View>
+                <Text style={styles.formLabel}>Código*</Text>
+                <TextInput style={styles.formInput} value={accesoForm.codigo} onChangeText={(t)=> setAccesoForm(s=>({...s,codigo:t}))} />
+                <Text style={styles.formLabel}>Nombre*</Text>
+                <TextInput style={styles.formInput} value={accesoForm.nombre} onChangeText={(t)=> setAccesoForm(s=>({...s,nombre:t}))} />
+                <Text style={styles.formLabel}>Scope</Text>
+                <View style={{ flexDirection:'row', flexWrap:'wrap', gap:8, marginTop:6 }}>
+                  {(['READ','WRITE','DELETE','ADMIN'] as const).map(sc => (
+                    <TouchableOpacity key={sc} onPress={()=> setAccesoForm(s=>({...s, scope: sc}))} style={[styles.roleChip, accesoForm.scope===sc && { backgroundColor:'#6B5B95' }]}><Text style={[styles.roleChipText, accesoForm.scope===sc && { color:'#fff' }]}>{sc}</Text></TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity style={[styles.tableFilterButton, { marginTop: 14 }]} onPress={saveAcceso}><Text style={{ color:'#fff', fontWeight:'700', textAlign:'center' }}>Guardar</Text></TouchableOpacity>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         </ScrollView>
       )}
 
       {section === 'notificaciones' && (
         <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <TouchableOpacity onPress={openNewNotif} style={[styles.tableFilterButton, { backgroundColor: '#6B5B95' }]}>
+              <Text style={{ color:'#fff', fontWeight:'700' }}>+ Nueva Notificación</Text>
+            </TouchableOpacity>
+          </View>
           {(notificaciones || []).map((n: any) => (
             <View key={n._id} style={{ backgroundColor: '#fff', borderRadius: 10, padding: 12, marginBottom: 10 }}>
               <Text style={{ fontWeight: '700' }}>{n.asunto || n.titulo || 'Notificación'}</Text>
               <Text style={{ color: '#666' }}>Tipo: {n.idTipoNotificacion?.nombre || n.tipo || 'N/A'}</Text>
               {n.destinatario ? <Text style={{ color: '#666' }}>Destinatario: {n.destinatario}</Text> : null}
+              <View style={{ flexDirection:'row', gap:10, marginTop: 8 }}>
+                <TouchableOpacity onPress={()=> openEditNotif(n)}><Ionicons name="create-outline" size={18} color="#666" /></TouchableOpacity>
+                <TouchableOpacity onPress={()=> removeNotif(n)}><Ionicons name="trash-outline" size={18} color="#C44" /></TouchableOpacity>
+              </View>
             </View>
           ))}
           {(!notificaciones || notificaciones.length === 0) && (
             <Text style={{ color: '#666' }}>Sin notificaciones</Text>
           )}
+
+          {/* Modal notificación */}
+          <Modal visible={notifModalOpen} transparent animationType="fade" onRequestClose={()=> setNotifModalOpen(false)}>
+            <TouchableWithoutFeedback onPress={()=> setNotifModalOpen(false)}>
+              <View style={styles.modalOverlayCenter}>
+                <TouchableWithoutFeedback>
+                  <View style={[styles.modalCard, { backgroundColor:'#fff' }] }>
+                <View style={{ flexDirection: 'row', justifyContent:'space-between', alignItems:'center' }}>
+                  <Text style={{ fontWeight:'700', fontSize:16 }}>{notifEditing? 'Editar Notificación':'Nueva Notificación'}</Text>
+                  <TouchableOpacity onPress={()=> setNotifModalOpen(false)}><Ionicons name="close" size={22} color="#333"/></TouchableOpacity>
+                </View>
+                <Text style={styles.formLabel}>Título</Text>
+                <TextInput style={styles.formInput} value={notifForm.titulo} onChangeText={(t)=> setNotifForm(s=>({...s,titulo:t}))} />
+                <Text style={styles.formLabel}>Asunto</Text>
+                <TextInput style={styles.formInput} value={notifForm.asunto} onChangeText={(t)=> setNotifForm(s=>({...s,asunto:t}))} />
+                <Text style={styles.formLabel}>Contenido</Text>
+                <TextInput style={[styles.formInput, { height: 90 }]} multiline value={notifForm.contenido} onChangeText={(t)=> setNotifForm(s=>({...s,contenido:t}))} />
+                <Text style={styles.formLabel}>Tipo</Text>
+                <TextInput style={styles.formInput} value={notifForm.tipo} onChangeText={(t)=> setNotifForm(s=>({...s,tipo:t}))} />
+                <Text style={styles.formLabel}>Destinatario (id)</Text>
+                <TextInput style={styles.formInput} value={notifForm.destinatario} onChangeText={(t)=> setNotifForm(s=>({...s,destinatario:t}))} />
+                <TouchableOpacity style={[styles.tableFilterButton, { marginTop: 14 }]} onPress={saveNotif}><Text style={{ color:'#fff', fontWeight:'700', textAlign:'center' }}>Guardar</Text></TouchableOpacity>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         </ScrollView>
       )}
 
       {section === 'registros' && (
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: '#333' }}>Registros Diarios: Aquí podrás listar y filtrar diarios por identificación del paciente (pendiente de wiring a backend).</Text>
+        <View style={{ padding: 16, flex: 1 }}>
+          <View style={[styles.filtersBar, { paddingVertical: 0 }]}>
+            <View style={styles.filterItem}>
+              <Text style={styles.smallLabel}>idUsuario</Text>
+              <TextInput style={styles.tableFilterInput} placeholder="ID de usuario" value={diarioFilters.idUsuario} onChangeText={(t)=> setDiarioFilters(s=>({...s,idUsuario:t}))} />
+            </View>
+            <View style={styles.filterItem}>
+              <Text style={styles.smallLabel}>Fecha Inicio (YYYY-MM-DD)</Text>
+              <TextInput style={styles.tableFilterInput} placeholder="2025-01-01" value={diarioFilters.fechaInicio} onChangeText={(t)=> setDiarioFilters(s=>({...s,fechaInicio:t}))} />
+            </View>
+            <View style={styles.filterItem}>
+              <Text style={styles.smallLabel}>Fecha Fin (YYYY-MM-DD)</Text>
+              <TextInput style={styles.tableFilterInput} placeholder="2025-12-31" value={diarioFilters.fechaFin} onChangeText={(t)=> setDiarioFilters(s=>({...s,fechaFin:t}))} />
+            </View>
+            <View style={styles.filterActions}>
+              <TouchableOpacity style={styles.tableFilterButton} onPress={loadDiarios}><Text style={{ color:'#fff', fontWeight:'700' }}>Filtrar</Text></TouchableOpacity>
+            </View>
+          </View>
+          <ScrollView style={styles.tableWrapper} contentContainerStyle={styles.tableContent}>
+            <View style={styles.tableHeaderRow}>
+              {['Fecha','Usuario','Título','Calificación'].map(h => (<View key={h} style={styles.th}><Text style={styles.thText}>{h}</Text></View>))}
+            </View>
+            {(diarios||[]).map((d:any) => (
+              <View key={d._id} style={styles.tableRow}>
+                <View style={styles.td}><Text style={styles.tdText}>{new Date(d.fecha || d.diario?.fecha || d.createdAt).toISOString().slice(0,10)}</Text></View>
+                <View style={styles.td}><Text style={styles.tdText}>{d.idUsuario || d.diario?.idUsuario || '—'}</Text></View>
+                <View style={[styles.td, { flex: 2 }]}><Text style={styles.tdText} numberOfLines={2}>{d.titulo || d.diario?.titulo}</Text></View>
+                <View style={styles.td}><Text style={styles.tdText}>{d.calificacion || d.diario?.calificacion}</Text></View>
+              </View>
+            ))}
+            {(!diarios || diarios.length===0) && (
+              <Text style={{ color:'#666' }}>Sin registros</Text>
+            )}
+          </ScrollView>
         </View>
       )}
 
       {section === 'personas' && (
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: '#333' }}>Registro de Personas: Aquí podrás consultar y gestionar personas asociadas a usuarios (pendiente de wiring a backend).</Text>
+        <View style={{ padding: 16, flex: 1 }}>
+          <View style={[styles.filtersBar, { paddingVertical: 0 }]}>
+            <View style={[styles.filterItem, { minWidth: 220 }] }>
+              <Text style={styles.smallLabel}>Buscar</Text>
+              <TextInput style={styles.tableFilterInput} placeholder="Nombre, documento, email" value={qPersona} onChangeText={setQPersona} />
+            </View>
+            <View style={styles.filterActions}>
+              <TouchableOpacity style={styles.tableFilterButton} onPress={loadPersonas}><Text style={{ color:'#fff', fontWeight:'700' }}>Filtrar</Text></TouchableOpacity>
+            </View>
+          </View>
+          <ScrollView style={styles.tableWrapper} contentContainerStyle={styles.tableContent}>
+            <View style={styles.tableHeaderRow}>
+              {['Nombres','Apellidos','Tipo Doc','Documento','Fecha Nac.'].map(h => (<View key={h} style={styles.th}><Text style={styles.thText}>{h}</Text></View>))}
+            </View>
+            {(personas||[]).map((p:any) => (
+              <View key={p._id} style={styles.tableRow}>
+                <View style={styles.td}><Text style={styles.tdText}>{p.nombres}</Text></View>
+                <View style={styles.td}><Text style={styles.tdText}>{p.apellidos}</Text></View>
+                <View style={styles.td}><Text style={styles.tdText}>{p.tipoDoc}</Text></View>
+                <View style={styles.td}><Text style={styles.tdText}>{p.numDoc}</Text></View>
+                <View style={styles.td}><Text style={styles.tdText}>{p.fechaNacimiento ? new Date(p.fechaNacimiento).toISOString().slice(0,10) : '—'}</Text></View>
+              </View>
+            ))}
+            {(!personas || personas.length===0) && (
+              <Text style={{ color:'#666' }}>Sin personas</Text>
+            )}
+          </ScrollView>
+        </View>
+      )}
+
+      {section === 'menu' && (
+        <View style={{ padding: 16, flex: 1 }}>
+          <View style={[styles.filtersBar, { paddingVertical: 0, alignItems: 'center' }]}>
+            <Text style={[styles.smallLabel, { marginRight: 8 }]}>Listando Menús (todos):</Text>
+            <TouchableOpacity
+              style={[styles.tableFilterButton, { backgroundColor: '#6B5B95' }]}
+              onPress={async ()=>{ setMenusLoading(true); try { const mm:any = await listMenus(); setMenus(mm?.data || []); } finally { setMenusLoading(false); } }}
+            >
+              <Text style={{ color:'#fff', fontWeight:'700' }}>{menusLoading? 'Actualizando...' : 'Actualizar'}</Text>
+            </TouchableOpacity>
+            <View style={{ flexDirection:'row', gap: 8, marginLeft: 8 }}>
+              <TouchableOpacity
+                style={[styles.filterChip, menusRootOnly && styles.filterChipActive]}
+                onPress={()=> setMenusRootOnly(true)}
+              >
+                <Text style={[styles.filterChipText, menusRootOnly && styles.filterChipTextActive]}>Solo raíz</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.filterChip, !menusRootOnly && styles.filterChipActive]}
+                onPress={()=> setMenusRootOnly(false)}
+              >
+                <Text style={[styles.filterChipText, !menusRootOnly && styles.filterChipTextActive]}>Todos</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <ScrollView style={styles.tableWrapper} contentContainerStyle={styles.tableContent}>
+            <View style={styles.tableHeaderRow}>
+              {['Nombre','Ruta','Orden','Padre','Activo','Acciones'].map(h => (<View key={h} style={styles.th}><Text style={styles.thText}>{h}</Text></View>))}
+            </View>
+            {((menus||[])
+              .filter((m:any)=> menusRootOnly ? !m.menuSuperior : true)
+              .sort((a:any,b:any)=> (a.orden||0)-(b.orden||0))
+            ).map((m:any)=> (
+              <View key={m._id} style={styles.tableRow}>
+                <View style={styles.td}><Text style={styles.tdText}>{m.nombre}</Text></View>
+                <View style={styles.td}><Text style={styles.tdText}>{m.ruta || '—'}</Text></View>
+                <View style={styles.td}><Text style={styles.tdText}>{m.orden ?? 0}</Text></View>
+                <View style={styles.td}><Text style={styles.tdText}>{m.menuSuperior?.nombre || m.menuSuperior || '—'}</Text></View>
+                <View style={[styles.td, { flexDirection:'row', alignItems:'center', gap:8 }]}>
+                  <TouchableOpacity
+                    onPress={async ()=>{
+                      try {
+                        await updateMenu(m._id, { activo: !(m.activo===true) });
+                        const mm:any = await listMenus();
+                        setMenus(mm?.data || []);
+                        setToast({ type:'success', message: `Menú ${!(m.activo===true) ? 'activado' : 'inactivado'}` });
+                      } catch(e:any) {
+                        setToast({ type:'error', message: e?.payload?.message || e?.message || 'No se pudo actualizar el menú' });
+                      }
+                    }}
+                    style={[styles.filterChip, (m.activo===true) && styles.filterChipActive]}
+                  >
+                    <Text style={[styles.filterChipText, (m.activo===true) && styles.filterChipTextActive]}>
+                      {m.activo===true ? 'Activo' : 'Inactivo'}
+                    </Text>
+                  </TouchableOpacity>
+                  {(!m.menuSuperior && m.activo===true) && (
+                    <Text style={{ color:'#27ae60', fontWeight:'600' }}>Visible en MainMenu</Text>
+                  )}
+                  {(!m.menuSuperior && m.activo!==true) && (
+                    <Text style={{ color:'#999' }}>No visible (inactivo)</Text>
+                  )}
+                </View>
+                <View style={[styles.td, { flexDirection:'row', gap: 12 }] }>
+                  {/* Solo toggle activo/inactivo solicitado */}
+                </View>
+              </View>
+            ))}
+            {(!menus || menus.length===0) && (
+              <Text style={{ color:'#666' }}>No hay menús. Activa menús raíz para que aparezcan en el MainMenu.</Text>
+            )}
+          </ScrollView>
         </View>
       )}
         </View>
@@ -898,9 +1542,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 5
+    elevation: 5,
+    zIndex: 1200
   },
   headerLeftArea: { flexDirection: 'row', alignItems: 'center' },
+  headerRightArea: { position: 'absolute', right: 12, top: 24, alignItems: 'flex-end', zIndex: 1500 },
   hamburger: { marginRight: 8, padding: 8 },
   appTitle: { fontSize: 18, color: '#fff', fontWeight: '700' },
   pageBody: { flex: 1, paddingHorizontal: 12, paddingVertical: 12 },
@@ -930,14 +1576,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'white',
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#e6e8eb',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.04,
     shadowRadius: 2,
-    elevation: 2
+    elevation: 1
+  },
+  searchBarFocused: {
+    borderColor: '#6B5B95',
+    shadowOpacity: 0.08,
+    elevation: 2,
   },
   searchBarWide: { maxWidth: 900, alignSelf: 'center' },
   userActionsRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap', gap: 8 },
@@ -945,14 +1598,17 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     marginLeft: 10,
-    fontSize: 16
+    fontSize: 16,
+    color: '#374151',
+    // Quitar outline azul en web
+    outlineStyle: 'none' as any
   },
-  refreshButton: {
-    padding: 8,
-    marginLeft: 8,
-    borderRadius: 6,
-    backgroundColor: '#f0f0f0'
+  searchClearButton: {
+    padding: 6,
+    marginRight: 4,
+    borderRadius: 12,
   },
+  
   filtersBar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1069,13 +1725,16 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end'
+    justifyContent: 'flex-end',
+    // Evitar cursor de "mano" molesto en web
+    cursor: 'default' as any
   },
   modalContent: {
     backgroundColor: 'white',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '80%'
+    maxHeight: '80%',
+    cursor: 'default' as any
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1146,11 +1805,92 @@ const styles = StyleSheet.create({
   tabPillActive: { backgroundColor: 'rgba(255,255,255,0.35)' },
   tabPillText: { color: 'white', fontWeight: '600' },
   tabPillTextActive: { textDecorationLine: 'underline' },
+  userBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16 },
+  userBadgeText: { color: '#fff', fontWeight: '600' },
+  dropdownMenu: { position: 'absolute', top: 36, right: 0, backgroundColor: '#fff', paddingVertical: 6, borderRadius: 10, minWidth: 220, shadowColor: '#000', shadowOffset: { width:0, height:2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 6, zIndex: 2000, borderWidth: 1, borderColor: '#eef0f2', maxHeight: 360 },
+  dropdownMenuMobile: { right: -8, minWidth: 240, maxWidth: 300 },
+  dropdownItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  dropdownItemText: { color: '#333', fontWeight: '600' },
+  menuBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent', zIndex: 1100 },
+  optionRow: { flexDirection:'row', alignItems:'center', gap:8, paddingVertical:12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  optionRowText: { color:'#333', fontWeight:'600' },
   // NUEVO: estilos para tabla de estados
   smallLabel: {
     fontSize: 12,
     color: '#666',
     marginBottom: 4
+  },
+  // Picker de fecha personalizado (estilo register, adaptado a admin)
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  step: {
+    color: '#333',
+    fontWeight: '600',
+  },
+  stepActive: {
+    textDecorationLine: 'underline',
+  },
+  stepSeparator: {
+    color: '#666',
+    marginHorizontal: 8,
+  },
+  gridWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  gridItem: {
+    minWidth: 70,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#f5f5f5',
+    margin: 4,
+    alignItems: 'center',
+  },
+  gridItemActive: {
+    backgroundColor: '#e8e8ff'
+  },
+  gridText: {
+    color: '#333',
+    fontWeight: '600'
+  },
+  monthsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  monthItem: {
+    width: '48%',
+    paddingVertical: 12,
+    marginVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+  },
+  daysWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dayItem: {
+    width: '18%',
+    paddingVertical: 10,
+    marginVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+  },
+  disabledItem: {
+    opacity: 0.45,
+  },
+  linkCta: {
+    color: '#6B5B95',
+    textDecorationLine: 'underline',
+    fontWeight: '700',
   },
   tableFilterInput: {
     backgroundColor: 'white',
@@ -1239,7 +1979,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    cursor: 'default' as any
   },
   modalCard: {
     width: '90%',
@@ -1249,8 +1990,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
-    elevation: 4
+    elevation: 4,
+    cursor: 'default' as any
   },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
+  stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#ddd' },
+  stepDotActive: { backgroundColor: '#6B5B95' },
+  stepLine: { width: 40, height: 2, backgroundColor: '#ddd' },
   formLabel: {
     fontSize: 14,
     fontWeight: '500',
@@ -1266,4 +2012,25 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     marginTop: 6
   },
+  secondaryButton: { backgroundColor: '#f2f2f2', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
+  secondaryButtonText: { color: '#333', fontWeight: '700' },
+  toast: { position: 'absolute', top: 8, left: 12, right: 12, zIndex: 1000, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  toastText: { color: '#fff', fontWeight: '700' },
+  toastSuccess: { backgroundColor: '#40C9A2' },
+  toastError: { backgroundColor: '#d9534f' },
 });
+
+// Utilidad: medidor sencillo de fuerza de contraseña
+function passwordStrength(pw: string) {
+  if (!pw) return { label: '', color: '#999' };
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 2) return { label: 'Débil', color: '#e67e22' };
+  if (score === 3) return { label: 'Media', color: '#f1c40f' };
+  if (score >= 4) return { label: 'Fuerte', color: '#27ae60' };
+  return { label: '', color: '#999' };
+}

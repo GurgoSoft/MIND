@@ -17,7 +17,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { getRootMenus, getUserProfile, type MenuItem } from "../services/api";
+import { getRootMenus, getMenuTree, getUserProfile, trackAdminAudit, type MenuItem } from "../services/api";
 import { clearToken } from "../services/auth";
 
 const { width } = Dimensions.get('window');
@@ -28,6 +28,7 @@ export default function MainMenuScreen() {
   const [error, setError] = useState<string | null>(null);
   const [menus, setMenus] = useState<MenuItem[]>([]);
   const [userName, setUserName] = useState<string>('');
+  const auditOnce = React.useRef(false);
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const sidebarAnim = useState(new Animated.Value(-width * 0.8))[0];
   const overlayAnim = useState(new Animated.Value(0))[0];
@@ -47,12 +48,29 @@ export default function MainMenuScreen() {
         
         if (!mounted) return;
         
-        setMenus(menusRes.data || []);
+        let fetched: MenuItem[] = menusRes.data || [];
+        // Fallback: si no hay root, intentar árbol (ambos ya respetan activo=true en backend)
+        if (!fetched || fetched.length === 0) {
+          try {
+            const tree = await getMenuTree();
+            fetched = (tree.data || []) as any;
+          } catch {}
+        }
+        setMenus(Array.isArray(fetched) ? fetched : []);
         
-        // Extraer nombre del usuario
+        // Extraer nombre e id del usuario
         const persona = profileRes?.data?.persona;
-        if (persona?.nombres) {
-          setUserName(persona.nombres.split(' ')[0]); // Solo el primer nombre
+        const userId = profileRes?.data?.usuario?._id || profileRes?.data?._id;
+        if (persona?.nombres) setUserName(persona.nombres.split(' ')[0]);
+
+        // Registrar auditoría de LOGIN una sola vez por sesión de pantalla
+        if (!auditOnce.current && userId) {
+          auditOnce.current = true;
+          try {
+            await trackAdminAudit({ entidad: 'Usuario', idEntidad: String(userId), accion: 'LOGIN' });
+          } catch (e) {
+            // no bloquear flujo por auditoría
+          }
         }
         
       } catch (e: any) {
@@ -181,7 +199,7 @@ export default function MainMenuScreen() {
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
         >
-          {menus.map((m) => {
+          {(menus || []).map((m: any) => {
             const isPressed = pressedId === m._id;
             const iconName = m.icono || iconMap[m.nombre] || "chevron-right";
             return (
@@ -211,6 +229,11 @@ export default function MainMenuScreen() {
               </Pressable>
             );
           })}
+          {(!menus || menus.length === 0) && (
+            <Text style={{ color: '#fff', textAlign: 'center', marginTop: 8 }}>
+              No hay menús activos. Actívalos en Administración → Menú.
+            </Text>
+          )}
         </ScrollView>
       )}
 
