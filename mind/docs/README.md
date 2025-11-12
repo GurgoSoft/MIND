@@ -105,7 +105,7 @@ SEED_SUPERADMIN_FECHA_NAC=1990-01-01
 SEED_RESET_PASSWORD=false
 ```
 
-3) Ejecuta la semilla desde la raíz del proyecto:
+3) Ejecutar la semilla desde la raíz del proyecto:
 
 ```powershell
 cd mind\mind
