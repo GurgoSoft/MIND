@@ -9,7 +9,7 @@ const { validate, commonSchemas } = require('../../../shared/middleware/validati
 // Validation schemas
 const diarioSchema = Joi.object({
   diario: Joi.object({
-    idUsuario: commonSchemas.objectId,
+    idUsuario: Joi.string().required(),
     fecha: Joi.date().default(Date.now),
     titulo: Joi.string().required().trim().max(200),
     nota: Joi.string().required().trim().max(2000),
@@ -17,25 +17,25 @@ const diarioSchema = Joi.object({
   }).required(),
   emociones: Joi.array().items(
     Joi.object({
-      idEmocion: commonSchemas.objectId,
+      idEmocion: Joi.string().required(),
       intensidad: Joi.number().integer().min(1).max(10).required()
     })
   ).default([]),
   sensaciones: Joi.array().items(
     Joi.object({
-      idSensacion: commonSchemas.objectId,
+      idSensacion: Joi.string().required(),
       intensidad: Joi.number().integer().min(1).max(10).required()
     })
   ).default([]),
   sintomas: Joi.array().items(
     Joi.object({
-      idSintoma: commonSchemas.objectId,
+      idSintoma: Joi.string().required(),
       intensidad: Joi.number().integer().min(1).max(10).required()
     })
   ).default([]),
   sentimientos: Joi.array().items(
     Joi.object({
-      idSentimiento: commonSchemas.objectId,
+      idSentimiento: Joi.string().required(),
       intensidad: Joi.number().integer().min(1).max(10).required()
     })
   ).default([])
@@ -109,7 +109,6 @@ router.get('/user/:idUsuario/stats',
 
 router.post('/', 
   validate(diarioSchema),
-  AuthMiddleware.authenticate,
   DiarioController.create
 );
 

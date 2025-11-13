@@ -185,8 +185,8 @@ class DiarioController {
       // Add emotions
       if (emociones.length > 0) {
         const emocionesData = emociones.map(emocion => ({
-          diarioId: nuevoDiario._id,
-          emocionId: emocion.idEmocion,
+          idDiario: nuevoDiario._id,
+          idEmocion: emocion.idEmocion,
           intensidad: emocion.intensidad
         }));
         promises.push(DiarioEmocion.insertMany(emocionesData));
@@ -195,8 +195,8 @@ class DiarioController {
       // Add sensations
       if (sensaciones.length > 0) {
         const sensacionesData = sensaciones.map(sensacion => ({
-          diarioId: nuevoDiario._id,
-          sensacionId: sensacion.idSensacion,
+          idDiario: nuevoDiario._id,
+          idSensacion: sensacion.idSensacion,
           intensidad: sensacion.intensidad
         }));
         promises.push(DiarioSensacion.insertMany(sensacionesData));
@@ -205,8 +205,8 @@ class DiarioController {
       // Add symptoms
       if (sintomas.length > 0) {
         const sintomasData = sintomas.map(sintoma => ({
-          diarioId: nuevoDiario._id,
-          sintomaId: sintoma.idSintoma,
+          idDiario: nuevoDiario._id,
+          idSintoma: sintoma.idSintoma,
           intensidad: sintoma.intensidad
         }));
         promises.push(DiarioSintoma.insertMany(sintomasData));
@@ -215,8 +215,8 @@ class DiarioController {
       // Add feelings
       if (sentimientos.length > 0) {
         const sentimientosData = sentimientos.map(sentimiento => ({
-          diarioId: nuevoDiario._id,
-          sentimientoId: sentimiento.idSentimiento,
+          idDiario: nuevoDiario._id,
+          idSentimiento: sentimiento.idSentimiento,
           intensidad: sentimiento.intensidad
         }));
         promises.push(DiarioSentimiento.insertMany(sentimientosData));
@@ -283,11 +283,11 @@ class DiarioController {
 
       // Update related entries if provided
       if (emociones !== undefined) {
-        await DiarioEmocion.deleteMany({ diarioId: req.params.id });
+        await DiarioEmocion.deleteMany({ idDiario: req.params.id });
         if (emociones.length > 0) {
           const emocionesData = emociones.map(emocion => ({
-            diarioId: req.params.id,
-            emocionId: emocion.idEmocion,
+            idDiario: req.params.id,
+            idEmocion: emocion.idEmocion,
             intensidad: emocion.intensidad
           }));
           await DiarioEmocion.insertMany(emocionesData);
@@ -295,11 +295,11 @@ class DiarioController {
       }
 
       if (sensaciones !== undefined) {
-        await DiarioSensacion.deleteMany({ diarioId: req.params.id });
+        await DiarioSensacion.deleteMany({ idDiario: req.params.id });
         if (sensaciones.length > 0) {
           const sensacionesData = sensaciones.map(sensacion => ({
-            diarioId: req.params.id,
-            sensacionId: sensacion.idSensacion,
+            idDiario: req.params.id,
+            idSensacion: sensacion.idSensacion,
             intensidad: sensacion.intensidad
           }));
           await DiarioSensacion.insertMany(sensacionesData);
@@ -307,11 +307,11 @@ class DiarioController {
       }
 
       if (sintomas !== undefined) {
-        await DiarioSintoma.deleteMany({ diarioId: req.params.id });
+        await DiarioSintoma.deleteMany({ idDiario: req.params.id });
         if (sintomas.length > 0) {
           const sintomasData = sintomas.map(sintoma => ({
-            diarioId: req.params.id,
-            sintomaId: sintoma.idSintoma,
+            idDiario: req.params.id,
+            idSintoma: sintoma.idSintoma,
             intensidad: sintoma.intensidad
           }));
           await DiarioSintoma.insertMany(sintomasData);
@@ -319,11 +319,11 @@ class DiarioController {
       }
 
       if (sentimientos !== undefined) {
-        await DiarioSentimiento.deleteMany({ diarioId: req.params.id });
+        await DiarioSentimiento.deleteMany({ idDiario: req.params.id });
         if (sentimientos.length > 0) {
           const sentimientosData = sentimientos.map(sentimiento => ({
-            diarioId: req.params.id,
-            sentimientoId: sentimiento.idSentimiento,
+            idDiario: req.params.id,
+            idSentimiento: sentimiento.idSentimiento,
             intensidad: sentimiento.intensidad
           }));
           await DiarioSentimiento.insertMany(sentimientosData);
@@ -375,10 +375,10 @@ class DiarioController {
 
       // Delete related entries
       await Promise.all([
-        DiarioEmocion.deleteMany({ diarioId: req.params.id }),
-        DiarioSensacion.deleteMany({ diarioId: req.params.id }),
-        DiarioSintoma.deleteMany({ diarioId: req.params.id }),
-        DiarioSentimiento.deleteMany({ diarioId: req.params.id })
+        DiarioEmocion.deleteMany({ idDiario: req.params.id }),
+        DiarioSensacion.deleteMany({ idDiario: req.params.id }),
+        DiarioSintoma.deleteMany({ idDiario: req.params.id }),
+        DiarioSentimiento.deleteMany({ idDiario: req.params.id })
       ]);
 
       // Delete diary entry

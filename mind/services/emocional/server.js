@@ -28,7 +28,7 @@ const PORT = process.env.EMOTIONAL_PORT || 3003;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:8081'],
   credentials: true
 }));
 

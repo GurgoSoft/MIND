@@ -461,14 +461,14 @@ export async function listDiarios(params?: { idUsuario?: string; fechaInicio?: s
   return emotionalFetch(`/api/emotional/diarios${q ? `?${q}` : ''}`, { method: 'GET' });
 }
 
-// Crear diario emocional (mínimo: diario.fecha, diario.titulo; opcional: calificacion, descripcion, idUsuario)
+// Crear diario emocional (mínimo: diario.fecha, diario.titulo; opcional: calificacion, nota, idUsuario)
 export async function createDiario(payload: {
   diario: {
     idUsuario?: string;
     fecha: string; // ISO
     titulo: string;
     calificacion?: number;
-    descripcion?: string;
+    nota?: string;
   };
   emociones?: Array<{ idEmocion: string; intensidad: number }>;
   sensaciones?: Array<{ idSensacion: string; intensidad: number }>;
@@ -476,4 +476,67 @@ export async function createDiario(payload: {
   sentimientos?: Array<{ idSentimiento: string; intensidad: number }>;
 }) {
   return emotionalFetch(`/api/emotional/diarios`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+// Emociones
+export async function listEmociones(params?: { idTipoEmocion?: string }) {
+  const query = new URLSearchParams();
+  if (params?.idTipoEmocion) query.append('idTipoEmocion', params.idTipoEmocion);
+  const q = query.toString();
+  return emotionalFetch(`/api/emotional/emociones${q ? `?${q}` : ''}`, { method: 'GET' });
+}
+
+export async function createEmocion(payload: { nombre: string; descripcion?: string; idTipoEmocion: string; idEmocion: string }) {
+  return emotionalFetch(`/api/emotional/emociones`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+// Sensaciones
+export async function listSensaciones() {
+  return emotionalFetch(`/api/emotional/sensaciones`, { method: 'GET' });
+}
+
+export async function createSensacion(payload: { nombre: string; descripcion?: string; tipo?: string }) {
+  const data = {
+    ...payload,
+    descripcion: payload.descripcion || `Sensación personalizada: ${payload.nombre}`,
+    idSensacion: `CUSTOM_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  };
+  return emotionalFetch(`/api/emotional/sensaciones`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+// Síntomas
+export async function listSintomas() {
+  return emotionalFetch(`/api/emotional/sintomas`, { method: 'GET' });
+}
+
+export async function createSintoma(payload: { nombre: string; descripcion?: string; tipo?: string }) {
+  const data = {
+    ...payload,
+    descripcion: payload.descripcion || `Síntoma personalizado: ${payload.nombre}`,
+    idSintoma: `CUSTOM_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  };
+  return emotionalFetch(`/api/emotional/sintomas`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+// Sentimientos
+export async function listSentimientos() {
+  return emotionalFetch(`/api/emotional/sentimientos`, { method: 'GET' });
+}
+
+export async function createSentimiento(payload: { nombre: string; descripcion?: string; tipo?: string }) {
+  const data = {
+    ...payload,
+    descripcion: payload.descripcion || `Sentimiento personalizado: ${payload.nombre}`,
+    idSentimiento: `CUSTOM_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  };
+  return emotionalFetch(`/api/emotional/sentimientos`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+// Tipos de Emoción
+export async function listTiposEmocion() {
+  return emotionalFetch(`/api/emotional/tiposemocion`, { method: 'GET' });
+}
+
+export async function createTipoEmocion(payload: { codigo?: string; nombre: string }) {
+  return emotionalFetch(`/api/emotional/tiposemocion`, { method: 'POST', body: JSON.stringify(payload) });
 }

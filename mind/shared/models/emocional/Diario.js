@@ -2,8 +2,7 @@ const mongoose = require('mongoose');
 
 const diarioSchema = new mongoose.Schema({
   idUsuario: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Usuario',
+    type: String,
     required: true
   },
   fecha: {

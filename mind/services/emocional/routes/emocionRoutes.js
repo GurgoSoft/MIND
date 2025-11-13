@@ -9,14 +9,16 @@ const { validate, commonSchemas } = require('../../../shared/middleware/validati
 // Validation schemas
 const emocionSchema = Joi.object({
   idTipoEmocion: commonSchemas.objectId,
-  idEmocion: Joi.number().integer().required(),
-  nombre: Joi.string().required().trim().max(100)
+  idEmocion: Joi.string().required().trim(),
+  nombre: Joi.string().required().trim().max(100),
+  descripcion: Joi.string().optional().trim().max(500)
 });
 
 const updateEmocionSchema = Joi.object({
   idTipoEmocion: commonSchemas.objectId,
-  idEmocion: Joi.number().integer(),
-  nombre: Joi.string().trim().max(100)
+  idEmocion: Joi.string().trim(),
+  nombre: Joi.string().trim().max(100),
+  descripcion: Joi.string().trim().max(500)
 });
 
 const querySchema = Joi.object({
@@ -28,25 +30,21 @@ const querySchema = Joi.object({
 // Routes
 router.get('/', 
   validate(querySchema, 'query'),
-  AuthMiddleware.authenticate,
   EmocionController.getAll
 );
 
 router.get('/:id', 
   validate(Joi.object({ id: commonSchemas.objectId }), 'params'),
-  AuthMiddleware.authenticate,
   EmocionController.getById
 );
 
 router.get('/tipo/:idTipoEmocion', 
   validate(Joi.object({ idTipoEmocion: commonSchemas.objectId }), 'params'),
-  AuthMiddleware.authenticate,
   EmocionController.getByType
 );
 
 router.post('/', 
   validate(emocionSchema),
-  AuthMiddleware.authenticate,
   EmocionController.create
 );
 

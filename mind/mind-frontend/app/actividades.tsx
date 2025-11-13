@@ -2,10 +2,12 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import NavigationHeader from "../components/NavigationHeader";
 
 export default function ActividadesScreen() {
   return (
     <LinearGradient colors={["#859CE8", "#6AB0D2"]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.container}>
+      <NavigationHeader />
       <View style={styles.centerBox}>
         <MaterialCommunityIcons name="meditation" size={64} color="#fff" />
         <Text style={styles.title}>Actividades sensoriales</Text>

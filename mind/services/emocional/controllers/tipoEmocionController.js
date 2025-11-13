@@ -6,7 +6,6 @@ class TipoEmocionController {
   // Get all emotion types with pagination and filtering
   static async getAll(req, res) {
     try {
-
       // Build filter object
       const filter = {};
       if (req.query.nombre) {
@@ -16,25 +15,17 @@ class TipoEmocionController {
         filter.activo = req.query.activo === 'true';
       }
 
-            const tiposEmocion = await TipoEmocion.find(filter)
-        
-        .sort({ nombre: 1 });
+      const tiposEmocion = await TipoEmocion.find(filter).sort({ nombre: 1 });
 
       res.json({
         success: true,
-        data: tiposEmocion,
-        pagination: {
-          currentPage: page,
-          totalPages: Math.ceil(total / limit),
-          totalItems: total,
-          itemsPerPage: limit
-        }
+        data: tiposEmocion
       });
     } catch (error) {
       res.status(500).json({
         success: false,
         message: 'Error al obtener tipos de emoción',
-        userAgent: req.get('User-Agent')
+        error: error.message
       });
     }
   }

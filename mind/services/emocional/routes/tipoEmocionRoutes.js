@@ -32,8 +32,8 @@ const idValidation = [
 ];
 
 // Routes
-router.get('/', AuthMiddleware.authenticate, TipoEmocionController.getAll);
-router.get('/:id', AuthMiddleware.authenticate, idValidation, handleValidationErrors, TipoEmocionController.getById);
+router.get('/', TipoEmocionController.getAll);
+router.get('/:id', idValidation, handleValidationErrors, TipoEmocionController.getById);
 router.post('/', AuthMiddleware.authenticate, createValidation, handleValidationErrors, TipoEmocionController.create);
 router.put('/:id', AuthMiddleware.authenticate, updateValidation, handleValidationErrors, TipoEmocionController.update);
 router.delete('/:id', AuthMiddleware.authenticate, idValidation, handleValidationErrors, TipoEmocionController.delete);

@@ -8,15 +8,17 @@ const { validate, commonSchemas } = require('../../../shared/middleware/validati
 
 // Validation schemas
 const sintomaSchema = Joi.object({
-  idSintoma: Joi.number().integer().required(),
+  idSintoma: Joi.string().required().trim(),
   nombre: Joi.string().required().trim().max(100),
-  tipo: Joi.string().required().trim().max(50)
+  tipo: Joi.string().optional().trim().max(50),
+  descripcion: Joi.string().optional().trim().max(500)
 });
 
 const updateSintomaSchema = Joi.object({
-  idSintoma: Joi.number().integer(),
+  idSintoma: Joi.string().trim(),
   nombre: Joi.string().trim().max(100),
-  tipo: Joi.string().trim().max(50)
+  tipo: Joi.string().trim().max(50),
+  descripcion: Joi.string().trim().max(500)
 });
 
 const querySchema = Joi.object({
@@ -28,25 +30,21 @@ const querySchema = Joi.object({
 // Routes
 router.get('/', 
   validate(querySchema, 'query'),
-  AuthMiddleware.authenticate,
   SintomaController.getAll
 );
 
 router.get('/:id', 
   validate(Joi.object({ id: commonSchemas.objectId }), 'params'),
-  AuthMiddleware.authenticate,
   SintomaController.getById
 );
 
 router.get('/tipo/:tipo', 
   validate(Joi.object({ tipo: Joi.string().required() }), 'params'),
-  AuthMiddleware.authenticate,
   SintomaController.getByType
 );
 
 router.post('/', 
   validate(sintomaSchema),
-  AuthMiddleware.authenticate,
   SintomaController.create
 );
 

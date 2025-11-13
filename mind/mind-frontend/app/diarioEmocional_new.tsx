@@ -16,8 +16,6 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import DateTimePicker from '@react-native-community/datetimepicker';
-import * as ScreenCapture from 'expo-screen-capture';
 import { 
   getUserProfile, 
   createDiario, 
@@ -25,12 +23,9 @@ import {
   listSensaciones, 
   listSintomas, 
   listSentimientos,
-  listTiposEmocion,
-  createEmocion,
   createSensacion,
   createSintoma,
-  createSentimiento,
-  createTipoEmocion
+  createSentimiento
 } from "../services/api";
 import NavigationHeader from "../components/NavigationHeader";
 
@@ -41,7 +36,6 @@ interface EmotionalItem {
   nombre: string;
   descripcion?: string;
   tipo?: string;
-  codigo?: string;
 }
 
 interface SelectedItem extends EmotionalItem {
@@ -56,7 +50,6 @@ export default function DiarioEmocionalScreen() {
   
   // Estados del formulario
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedEmocion, setSelectedEmocion] = useState<SelectedItem | null>(null);
   const [selectedSensacion, setSelectedSensacion] = useState<SelectedItem | null>(null);
   const [selectedSintoma, setSelectedSintoma] = useState<SelectedItem | null>(null);
@@ -69,23 +62,14 @@ export default function DiarioEmocionalScreen() {
   const [sensaciones, setSensaciones] = useState<EmotionalItem[]>([]);
   const [sintomas, setSintomas] = useState<EmotionalItem[]>([]);
   const [sentimientos, setSentimientos] = useState<EmotionalItem[]>([]);
-  const [tiposEmocion, setTiposEmocion] = useState<EmotionalItem[]>([]);
 
   // Estados del modal
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState<ModalType | null>(null);
-  const [originalModalType, setOriginalModalType] = useState<ModalType | null>(null);
   const [modalSearch, setModalSearch] = useState("");
   const [modalData, setModalData] = useState<EmotionalItem[]>([]);
   const [currentSelection, setCurrentSelection] = useState<EmotionalItem | null>(null);
   const [selectedIntensity, setSelectedIntensity] = useState<number | null>(null);
-  const [creatingCustomItem, setCreatingCustomItem] = useState(false);
-
-  // Estados para alertas personalizadas
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertTitle, setAlertTitle] = useState('');
-  const [alertMessage, setAlertMessage] = useState('');
-  const [alertType, setAlertType] = useState<'success' | 'error' | 'warning'>('error');
 
   // Intensidades de 1 a 10
   const intensidades = [
@@ -101,44 +85,9 @@ export default function DiarioEmocionalScreen() {
     { value: 10, label: "Máximo" },
   ];
 
-  // Función para mostrar alertas personalizadas
-  const showAlert = (title: string, message: string, type: 'success' | 'error' | 'warning' = 'error') => {
-    setAlertTitle(title);
-    setAlertMessage(message);
-    setAlertType(type);
-    setAlertVisible(true);
-  };
-
   // Cargar datos iniciales
   useEffect(() => {
     loadInitialData();
-  }, []);
-
-  // Prevenir capturas de pantalla
-  useEffect(() => {
-    const preventScreenCapture = async () => {
-      try {
-        await ScreenCapture.preventScreenCaptureAsync();
-      } catch (error) {
-        console.log('Error activando protección contra capturas:', error);
-      }
-    };
-
-    const allowScreenCapture = async () => {
-      try {
-        await ScreenCapture.allowScreenCaptureAsync();
-      } catch (error) {
-        console.log('Error desactivando protección contra capturas:', error);
-      }
-    };
-
-    // Activar protección al montar el componente
-    preventScreenCapture();
-
-    // Desactivar protección al desmontar el componente
-    return () => {
-      allowScreenCapture();
-    };
   }, []);
 
   const loadInitialData = async () => {
@@ -151,23 +100,21 @@ export default function DiarioEmocionalScreen() {
       if (uid) setUserId(uid);
 
       // Cargar datos en paralelo
-      const [emocionesRes, sensacionesRes, sintomasRes, sentimientosRes, tiposEmocionRes] = await Promise.all([
+      const [emocionesRes, sensacionesRes, sintomasRes, sentimientosRes] = await Promise.all([
         listEmociones(),
         listSensaciones(),
         listSintomas(),
-        listSentimientos(),
-        listTiposEmocion()
+        listSentimientos()
       ]);
 
       setEmociones(emocionesRes?.data || []);
       setSensaciones(sensacionesRes?.data || []);
       setSintomas(sintomasRes?.data || []);
       setSentimientos(sentimientosRes?.data || []);
-      setTiposEmocion(tiposEmocionRes?.data || []);
 
     } catch (error) {
       console.error('Error cargando datos:', error);
-      showAlert('Error', 'No se pudieron cargar los datos', 'error');
+      Alert.alert('Error', 'No se pudieron cargar los datos');
     } finally {
       setLoading(false);
     }
@@ -176,11 +123,8 @@ export default function DiarioEmocionalScreen() {
   // Validar fecha (no más de un mes atrás, no futuros)
   const validateDate = (date: Date): boolean => {
     const today = new Date();
-    today.setHours(23, 59, 59, 999); // Hasta el final del día actual
-    
     const oneMonthAgo = new Date();
     oneMonthAgo.setMonth(today.getMonth() - 1);
-    oneMonthAgo.setHours(0, 0, 0, 0); // Desde el inicio del día hace un mes
     
     return date >= oneMonthAgo && date <= today;
   };
@@ -188,24 +132,6 @@ export default function DiarioEmocionalScreen() {
   // Formatear fecha para mostrar
   const formatDate = (date: Date): string => {
     return date.toLocaleDateString('es-ES');
-  };
-
-  // Manejar cambio de fecha
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    // En Android, cerrar el picker inmediatamente
-    setShowDatePicker(Platform.OS === 'ios');
-    
-    if (selectedDate && event.type !== 'dismissed') {
-      if (validateDate(selectedDate)) {
-        setSelectedDate(selectedDate);
-      } else {
-        showAlert(
-          'Fecha no válida', 
-          'Solo puedes seleccionar fechas de hasta un mes atrás y no fechas futuras.',
-          'warning'
-        );
-      }
-    }
   };
 
   // Validar palabras mínimas en el texto
@@ -217,19 +143,7 @@ export default function DiarioEmocionalScreen() {
   // Abrir modal para seleccionar
   const openModal = (type: ModalType, data: EmotionalItem[]) => {
     setModalType(type);
-    setOriginalModalType(type); // Guardar el tipo original
-    
-    // Agregar opción "Otro" al final de la lista
-    const dataWithOtro = [
-      ...data,
-      {
-        _id: 'otro',
-        nombre: 'Otro',
-        tipo: 'especial'
-      }
-    ];
-    
-    setModalData(dataWithOtro);
+    setModalData([...data]);
     setModalSearch("");
     setCurrentSelection(null);
     setSelectedIntensity(null);
@@ -241,20 +155,16 @@ export default function DiarioEmocionalScreen() {
   const closeModal = () => {
     setModalVisible(false);
     setModalType(null);
-    setOriginalModalType(null);
     setModalData([]);
     setCurrentSelection(null);
     setSelectedIntensity(null);
     setCustomText("");
     setModalSearch("");
-    setCreatingCustomItem(false);
   };
 
   // Seleccionar item en modal
   const selectItem = (item: EmotionalItem) => {
-    console.log('selectItem llamado con:', item);
     if (item.nombre === "Otro") {
-      console.log('Cambiando modalType a "otro"');
       setModalType('otro');
       return;
     }
@@ -272,28 +182,19 @@ export default function DiarioEmocionalScreen() {
 
   // Confirmar selección con intensidad
   const confirmSelection = async (item: EmotionalItem, intensidad: number | null) => {
-    console.log('✅ confirmSelection llamado con:', { item, intensidad, modalType, originalModalType });
     const selectedWithIntensity: SelectedItem = { ...item, intensidad: intensidad ?? undefined };
 
-    // Usar originalModalType si existe, sino usar modalType
-    const typeToUse = originalModalType || modalType;
-    console.log('📌 Tipo a usar para guardar:', typeToUse);
-
-    switch (typeToUse) {
+    switch (modalType) {
       case 'emocion':
-        console.log('💚 Guardando emoción:', selectedWithIntensity);
         setSelectedEmocion(selectedWithIntensity);
         break;
       case 'sensacion':
-        console.log('💙 Guardando sensación:', selectedWithIntensity);
         setSelectedSensacion(selectedWithIntensity);
         break;
       case 'sintoma':
-        console.log('💛 Guardando síntoma:', selectedWithIntensity);
         setSelectedSintoma(selectedWithIntensity);
         break;
       case 'sentimiento':
-        console.log('💜 Guardando sentimiento:', selectedWithIntensity);
         setSelectedSentimiento(selectedWithIntensity);
         break;
     }
@@ -303,195 +204,82 @@ export default function DiarioEmocionalScreen() {
 
   // Crear elemento personalizado
   const createCustomItem = async () => {
-    if (creatingCustomItem) {
-      console.log('Ya se está creando un item, ignorando');
-      return;
-    }
-
-    console.log('=== INICIO createCustomItem ===');
-    console.log('createCustomItem llamado con:', {
-      modalType,
-      originalModalType,
-      customText: customText.trim(),
-      tiposEmocionLength: tiposEmocion.length
-    });
-
     if (!customText.trim()) {
-      console.log('Texto vacío, mostrando alerta');
       Alert.alert('Error', 'Debes escribir el nombre del elemento');
       return;
     }
 
-    setCreatingCustomItem(true);
-
     try {
       let newItem: EmotionalItem | null = null;
 
-      switch (originalModalType) {
-        case 'emocion':
-          console.log('🔵 INICIO CASO EMOCIÓN - Versión Nueva');
-          // Buscar el tipo "Personalizada" o usar el primero disponible
-          let defaultTipoEmocion = null;
-          
-          if (tiposEmocion.length === 0) {
-            console.log('⚠️ No hay tipos de emoción cargados, recargando...');
-            Alert.alert('Error', 'No hay tipos de emoción disponibles. Por favor, recarga la aplicación.');
-            return;
-          } else {
-            // Buscar el tipo "Personalizada" primero
-            const personalizada = tiposEmocion.find(t => t.nombre === 'Personalizada' || t.codigo === 'PERSONALIZADA');
-            if (personalizada) {
-              defaultTipoEmocion = personalizada._id;
-              console.log('✅ Usando tipo "Personalizada":', defaultTipoEmocion);
-            } else {
-              // Si no existe, usar el primero disponible
-              defaultTipoEmocion = tiposEmocion[0]._id;
-              console.log('✅ Usando primer tipo disponible:', tiposEmocion[0].nombre);
-            }
-          }
-          
-          if (!defaultTipoEmocion) {
-            console.log('❌ No se pudo obtener defaultTipoEmocion');
-            Alert.alert('Error', 'No se pudo obtener un tipo de emoción válido');
-            return;
-          }
-
-          console.log('📝 Preparando datos de emoción...');
-          const emocionData = {
-            nombre: customText.trim(),
-            descripcion: `Emoción personalizada: ${customText.trim()}`,
-            idTipoEmocion: defaultTipoEmocion,
-            idEmocion: `CUSTOM_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-          };
-          console.log('🌐 Enviando datos de emoción al servidor:', emocionData);
-          const emocionRes = await createEmocion(emocionData);
-          console.log('🎉 Emoción creada exitosamente:', emocionRes);
-          newItem = emocionRes.data;
-          break;
+      switch (modalType) {
         case 'sensacion':
-          console.log('🔵 Creando sensación personalizada...');
-          const sensacionData = {
+          const sensacionRes = await createSensacion({
             nombre: customText.trim(),
-            tipo: 'fisica' // Usar un valor válido del enum
-          };
-          console.log('📝 Enviando datos de sensación:', sensacionData);
-          const sensacionRes = await createSensacion(sensacionData);
-          console.log('🎉 Sensación creada exitosamente:', sensacionRes);
+            tipo: 'Otros'
+          });
           newItem = sensacionRes.data;
           break;
         case 'sintoma':
-          console.log('🔵 Creando síntoma personalizado...');
-          const sintomaData = {
+          const sintomaRes = await createSintoma({
             nombre: customText.trim(),
-            tipo: 'fisico' // Usar un valor válido del enum
-          };
-          console.log('📝 Enviando datos de síntoma:', sintomaData);
-          const sintomaRes = await createSintoma(sintomaData);
-          console.log('🎉 Síntoma creado exitosamente:', sintomaRes);
+            tipo: 'Otros'
+          });
           newItem = sintomaRes.data;
           break;
         case 'sentimiento':
-          console.log('🔵 Creando sentimiento personalizado...');
-          const sentimientoData = {
+          const sentimientoRes = await createSentimiento({
             nombre: customText.trim(),
-            tipo: 'neutro' // Usar un valor válido del enum
-          };
-          console.log('📝 Enviando datos de sentimiento:', sentimientoData);
-          const sentimientoRes = await createSentimiento(sentimientoData);
-          console.log('🎉 Sentimiento creado exitosamente:', sentimientoRes);
+            tipo: 'Otros'
+          });
           newItem = sentimientoRes.data;
           break;
       }
 
       if (newItem) {
-        console.log('Item creado exitosamente:', newItem);
-        // Actualizar la lista local para que aparezca inmediatamente
-        switch (originalModalType) {
-          case 'emocion':
-            console.log('Actualizando lista de emociones...');
-            setEmociones(prev => [...prev, newItem]);
-            break;
-          case 'sensacion':
-            console.log('Actualizando lista de sensaciones...');
-            setSensaciones(prev => [...prev, newItem]);
-            break;
-          case 'sintoma':
-            console.log('Actualizando lista de síntomas...');
-            setSintomas(prev => [...prev, newItem]);
-            break;
-          case 'sentimiento':
-            console.log('Actualizando lista de sentimientos...');
-            setSentimientos(prev => [...prev, newItem]);
-            break;
-        }
-        
-        console.log('Pasando a modal de intensidad con item:', newItem);
         setCurrentSelection(newItem);
         setModalType('intensidad');
       }
     } catch (error) {
-      console.error('Error en createCustomItem:', error);
       Alert.alert('Error', 'No se pudo crear el elemento personalizado');
-    } finally {
-      setCreatingCustomItem(false);
     }
-    console.log('=== FIN createCustomItem ===');
   };
 
   // Validar formulario
   const validateForm = (): boolean => {
-    console.log('🔍 Validando formulario...');
-    console.log('  - selectedEmocion:', selectedEmocion);
-    console.log('  - selectedSensacion:', selectedSensacion);
-    console.log('  - selectedSintoma:', selectedSintoma);
-    console.log('  - selectedSentimiento:', selectedSentimiento);
-    console.log('  - hoySiento palabras:', hoySiento.trim().split(/\s+/).filter(word => word.length > 0).length);
-    
-    const missingFields: string[] = [];
-    
-    if (!selectedEmocion) missingFields.push('Emoción');
-    if (!selectedSensacion) missingFields.push('Sensación');
-    if (!selectedSintoma) missingFields.push('Síntoma');
-    if (!selectedSentimiento) missingFields.push('Sentimiento');
-    if (!validateMinWords(hoySiento)) missingFields.push('Hoy siento (mínimo 25 palabras)');
-    
-    if (missingFields.length > 0) {
-      showAlert(
-        'Campos requeridos',
-        `Por favor completa los siguientes campos obligatorios:\n\n• ${missingFields.join('\n• ')}`,
-        'warning'
-      );
+    if (!selectedEmocion) {
+      Alert.alert('Campo requerido', 'Debes seleccionar una emoción');
       return false;
     }
-    
+    if (!selectedSensacion) {
+      Alert.alert('Campo requerido', 'Debes seleccionar una sensación');
+      return false;
+    }
+    if (!selectedSintoma) {
+      Alert.alert('Campo requerido', 'Debes seleccionar un síntoma');
+      return false;
+    }
+    if (!selectedSentimiento) {
+      Alert.alert('Campo requerido', 'Debes seleccionar un sentimiento');
+      return false;
+    }
+    if (!validateMinWords(hoySiento)) {
+      Alert.alert('Campo requerido', 'El campo "Hoy siento" debe tener al menos 25 palabras');
+      return false;
+    }
     return true;
   };
 
   // Guardar diario
   const handleSave = async () => {
-    console.log('🔵 handleSave llamado');
-    console.log('📝 userId:', userId);
-    console.log('📝 validateForm:', validateForm());
-    
-    if (!validateForm()) {
-      console.log('❌ Validación fallida');
-      return;
-    }
-    
-    // Usar ID temporal si no hay usuario (para desarrollo)
-    const userIdToUse = userId || 'temporal-user-' + Date.now();
-    
-    if (!userId) {
-      console.log('⚠️ No hay userId, usando temporal:', userIdToUse);
-    }
+    if (!validateForm() || !userId) return;
 
     try {
-      console.log('✅ Iniciando guardado...');
       setSaving(true);
 
       const payload = {
         diario: {
-          idUsuario: userIdToUse,
+          idUsuario: userId,
           fecha: selectedDate.toISOString(),
           titulo: `Diario del ${formatDate(selectedDate)}`,
           nota: hoySiento.trim(),
@@ -520,11 +308,7 @@ export default function DiarioEmocionalScreen() {
         }] : []
       };
 
-      console.log('📤 Enviando payload:', JSON.stringify(payload, null, 2));
-      
-      const result = await createDiario(payload);
-      
-      console.log('✅ Resultado:', result);
+      await createDiario(payload);
 
       // Limpiar formulario
       setSelectedEmocion(null);
@@ -534,14 +318,10 @@ export default function DiarioEmocionalScreen() {
       setHoySiento("");
       setSelectedDate(new Date());
 
-      showAlert('Éxito', 'Registro guardado correctamente', 'success');
+      Alert.alert('Éxito', 'Registro guardado correctamente');
 
     } catch (error: any) {
-      console.error('❌ Error guardando:', error);
-      console.error('❌ Error message:', error?.message);
-      console.error('❌ Error response:', error?.response?.data);
-      console.error('❌ Full error:', JSON.stringify(error, null, 2));
-      showAlert('Error', error?.message || 'No se pudo guardar el registro', 'error');
+      Alert.alert('Error', error?.message || 'No se pudo guardar el registro');
     } finally {
       setSaving(false);
     }
@@ -560,8 +340,10 @@ export default function DiarioEmocionalScreen() {
       baseData = [...modalData, { _id: 'no-sentimiento', nombre: 'No siento algo', tipo: 'especial' }];
     }
     
-    // Agregar opción "Otro" para todos los tipos
-    baseData = [...baseData, { _id: 'otro', nombre: 'Otro', tipo: 'especial' }];
+    // Agregar opción "Otro" para sensaciones, síntomas y sentimientos (no para emociones)
+    if (modalType !== 'emocion') {
+      baseData = [...baseData, { _id: 'otro', nombre: 'Otro', tipo: 'especial' }];
+    }
 
     // Filtrar por búsqueda
     if (modalSearch.trim()) {
@@ -598,7 +380,7 @@ export default function DiarioEmocionalScreen() {
           {/* Fecha */}
           <View style={styles.fieldContainer}>
             <Text style={styles.label}>Fecha *</Text>
-            <Pressable style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
+            <Pressable style={styles.dateButton} onPress={() => {}}>
               <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
               <MaterialCommunityIcons name="calendar" size={20} color="#5E4AE3" />
             </Pressable>
@@ -783,17 +565,10 @@ export default function DiarioEmocionalScreen() {
                     <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[
-                      styles.modalButton, 
-                      styles.modalButtonAccept,
-                      (creatingCustomItem || !customText.trim()) && styles.modalButtonDisabled
-                    ]}
+                    style={[styles.modalButton, styles.modalButtonAccept]}
                     onPress={createCustomItem}
-                    disabled={creatingCustomItem || !customText.trim()}
                   >
-                    <Text style={styles.modalButtonTextAccept}>
-                      {creatingCustomItem ? 'Creando...' : 'Crear'}
-                    </Text>
+                    <Text style={styles.modalButtonTextAccept}>Crear</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -825,64 +600,6 @@ export default function DiarioEmocionalScreen() {
                 />
               </View>
             )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* DateTimePicker */}
-      {showDatePicker && (
-        <DateTimePicker
-          value={selectedDate}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={onDateChange}
-          maximumDate={new Date()}
-          minimumDate={(() => {
-            const oneMonthAgo = new Date();
-            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-            return oneMonthAgo;
-          })()}
-        />
-      )}
-
-      {/* Alerta Personalizada */}
-      <Modal
-        visible={alertVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setAlertVisible(false)}
-      >
-        <View style={styles.alertOverlay}>
-          <View style={styles.alertContainer}>
-            <View style={[
-              styles.alertIconContainer,
-              alertType === 'success' && styles.alertIconSuccess,
-              alertType === 'error' && styles.alertIconError,
-              alertType === 'warning' && styles.alertIconWarning
-            ]}>
-              <MaterialCommunityIcons 
-                name={
-                  alertType === 'success' ? 'check-circle' : 
-                  alertType === 'error' ? 'close-circle' : 
-                  'alert-circle'
-                } 
-                size={50} 
-                color="#fff" 
-              />
-            </View>
-            <Text style={styles.alertTitle}>{alertTitle}</Text>
-            <Text style={styles.alertMessage}>{alertMessage}</Text>
-            <Pressable 
-              style={[
-                styles.alertButton,
-                alertType === 'success' && styles.alertButtonSuccess,
-                alertType === 'error' && styles.alertButtonError,
-                alertType === 'warning' && styles.alertButtonWarning
-              ]} 
-              onPress={() => setAlertVisible(false)}
-            >
-              <Text style={styles.alertButtonText}>Entendido</Text>
-            </Pressable>
           </View>
         </View>
       </Modal>
@@ -1105,78 +822,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  // Estilos de alerta personalizada
-  alertOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  alertContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  alertIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  alertIconSuccess: {
-    backgroundColor: '#4CAF50',
-  },
-  alertIconError: {
-    backgroundColor: '#F44336',
-  },
-  alertIconWarning: {
-    backgroundColor: '#FF9800',
-  },
-  alertTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  alertMessage: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 24,
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  alertButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 8,
-    minWidth: 120,
-  },
-  alertButtonSuccess: {
-    backgroundColor: '#4CAF50',
-  },
-  alertButtonError: {
-    backgroundColor: '#F44336',
-  },
-  alertButtonWarning: {
-    backgroundColor: '#FF9800',
-  },
-  alertButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
   },
 });
