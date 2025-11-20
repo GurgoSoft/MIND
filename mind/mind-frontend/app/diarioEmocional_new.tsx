@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { 
   getUserProfile, 
   createDiario, 
@@ -43,6 +44,8 @@ interface SelectedItem extends EmotionalItem {
 }
 
 export default function DiarioEmocionalScreen() {
+  const router = useRouter();
+  
   // Estados básicos
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,17 +76,30 @@ export default function DiarioEmocionalScreen() {
 
   // Intensidades de 1 a 10
   const intensidades = [
-    { value: 1, label: "Muy bajo" },
-    { value: 2, label: "Bajo" },
-    { value: 3, label: "Leve" },
-    { value: 4, label: "Moderado bajo" },
-    { value: 5, label: "Moderado" },
-    { value: 6, label: "Moderado alto" },
-    { value: 7, label: "Alto" },
-    { value: 8, label: "Muy alto" },
-    { value: 9, label: "Extremo" },
-    { value: 10, label: "Máximo" },
+    { value: 1, label: "Demasiado leve" },
+    { value: 2, label: "Muy leve" },
+    { value: 3, label: "Ligeramente leve" },
+    { value: 4, label: "Leve" },
+    { value: 5, label: "Presuntamente moderado" },
+    { value: 6, label: "Moderado" },
+    { value: 7, label: "Ligeramente intenso" },
+    { value: 8, label: "Intenso" },
+    { value: 9, label: "Bastante intenso" },
+    { value: 10, label: "Demasiado intenso" },
   ];
+
+  // Títulos de modales centralizados
+  const getModalTitle = () => {
+    const titles = {
+      'emocion': '¿Qué emoción tengo?',
+      'sensacion': 'Tengo sensación de',
+      'sintoma': 'Poseo síntomas de',
+      'sentimiento': 'Siento',
+      'intensidad': 'Nivel de intensidad',
+      'otro': 'Escribe tu respuesta'
+    };
+    return titles[modalType as keyof typeof titles] || '';
+  };
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -143,7 +159,14 @@ export default function DiarioEmocionalScreen() {
   // Abrir modal para seleccionar
   const openModal = (type: ModalType, data: EmotionalItem[]) => {
     setModalType(type);
-    setModalData([...data]);
+    
+    // Agregar opción "Otro" al final de la lista para permitir crear elementos personalizados
+    const dataWithOtro = [
+      ...data,
+      { _id: 'otro', nombre: 'Otro', tipo: 'especial' }
+    ];
+    
+    setModalData(dataWithOtro);
     setModalSearch("");
     setCurrentSelection(null);
     setSelectedIntensity(null);
@@ -320,6 +343,11 @@ export default function DiarioEmocionalScreen() {
 
       Alert.alert('Éxito', 'Registro guardado correctamente');
 
+      // Redirigir al mainMenu después de cerrar el alert
+      setTimeout(() => {
+        router.push('/mainMenu');
+      }, 1500);
+
     } catch (error: any) {
       Alert.alert('Error', error?.message || 'No se pudo guardar el registro');
     } finally {
@@ -329,30 +357,14 @@ export default function DiarioEmocionalScreen() {
 
   // Filtrar datos del modal
   const getFilteredModalData = () => {
-    let baseData = modalData;
-    
-    // Agregar opciones especiales según el tipo
-    if (modalType === 'sensacion') {
-      baseData = [...modalData, { _id: 'no-sensacion', nombre: 'No tengo sensaciones', tipo: 'especial' }];
-    } else if (modalType === 'sintoma') {
-      baseData = [...modalData, { _id: 'no-sintoma', nombre: 'No tengo síntomas', tipo: 'especial' }];
-    } else if (modalType === 'sentimiento') {
-      baseData = [...modalData, { _id: 'no-sentimiento', nombre: 'No siento algo', tipo: 'especial' }];
-    }
-    
-    // Agregar opción "Otro" para sensaciones, síntomas y sentimientos (no para emociones)
-    if (modalType !== 'emocion') {
-      baseData = [...baseData, { _id: 'otro', nombre: 'Otro', tipo: 'especial' }];
-    }
-
     // Filtrar por búsqueda
     if (modalSearch.trim()) {
-      return baseData.filter(item => 
+      return modalData.filter(item => 
         item.nombre.toLowerCase().includes(modalSearch.toLowerCase())
       );
     }
     
-    return baseData;
+    return modalData;
   };
 
   if (loading) {
@@ -481,14 +493,7 @@ export default function DiarioEmocionalScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {modalType === 'emocion' && '¿Qué emoción tengo?'}
-                {modalType === 'sensacion' && 'Tengo sensación de'}
-                {modalType === 'sintoma' && 'Poseo síntomas de'}
-                {modalType === 'sentimiento' && 'Siento'}
-                {modalType === 'intensidad' && 'Nivel de intensidad'}
-                {modalType === 'otro' && 'Escribe tu respuesta'}
-              </Text>
+              <Text style={styles.modalTitle}>{getModalTitle()}</Text>
               <TouchableOpacity onPress={closeModal}>
                 <MaterialCommunityIcons name="close" size={24} color="#666" />
               </TouchableOpacity>

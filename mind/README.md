@@ -694,27 +694,19 @@ Gestión de citas, agendas, diagnósticos y seguimiento de pacientes.
 
 La mayoría de endpoints requieren autenticación JWT. Para usar los endpoints protegidos:
 
-**Registrar usuario:**
-```json
+1. **Registrar usuario:**
+```bash
 POST /api/auth/register
 {
-  "persona": {
-    "nombres": "Juan",
-    "apellidos": "Pérez",
-    "tipoDoc": "CC",
-    "numDoc": "1234567890",
-    "fechaNacimiento": "1990-01-01"
-  },
-  "usuario": {
-    "email": "usuario@ejemplo.com",
-    "telefono": "3001234567",
-    "passwordHash": "contraseña123"
-  }
+  "email": "usuario@ejemplo.com",
+  "password": "contraseña123",
+  "idPersona": "ID_DE_PERSONA",
+  "idTipoUsuario": "ID_TIPO_USUARIO"
 }
 ```
 
-**Iniciar sesión:**
-```json
+2. **Iniciar sesión:**
+```bash
 POST /api/auth/login
 {
   "email": "usuario@ejemplo.com",
@@ -722,79 +714,134 @@ POST /api/auth/login
 }
 ```
 
-**Usar el token en headers:**
-```
+3. **Usar el token en headers:**
+```bash
 Authorization: Bearer <JWT_TOKEN>
 ```
-
-## Credenciales de Administrador
-
-**Usuario Superadministrador:**
-```
-Email: superadmin@mind.com
-Contraseña: admin1234
-```
-
-**Nota:** Estas credenciales se configuran en el archivo `.env` y se pueden personalizar mediante las variables `SEED_SUPERADMIN_EMAIL` y `SEED_SUPERADMIN_PASSWORD`.
-
-## Tecnologias
-
-- Node.js - Runtime de JavaScript
-- Express.js - Framework web
-- MongoDB - Base de datos NoSQL
-- Mongoose - ODM para MongoDB
-- JWT - Autenticación
-- Joi - Validación de datos
-- bcryptjs - Encriptación de contraseñas
-- Concurrently - Ejecución paralela de servicios
-- React Native - Framework móvil multiplataforma
-- Expo - Plataforma de desarrollo para React Native
-- TypeScript - Superset tipado de JavaScript
 
 ## Health Checks
 
 Cada microservicio tiene un endpoint de salud:
+- Administrativo: http://localhost:3001/health
+- Usuarios: http://localhost:3002/health
+- Emocional: http://localhost:3003/health
+- Agenda: http://localhost:3004/health
 
-- Administrativo: `http://localhost:3001/health`
-- Usuarios: `http://localhost:3002/health`
-- Emocional: `http://localhost:3003/health`
-- Agenda: `http://localhost:3004/health`
+## Estructura del Proyecto
+
+```
+mind/
+├── services/
+│   ├── administrativo/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   └── server.js
+│   ├── agenda/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   └── server.js
+│   ├── emocional/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   └── server.js
+│   └── usuarios/
+│       ├── controllers/
+│       ├── routes/
+│       └── server.js
+├── shared/
+│   ├── config/
+│   │   └── database.js
+│   ├── middleware/
+│   │   ├── auth.js
+│   │   ├── errorHandler.js
+│   │   └── validation.js
+│   └── models/
+│       ├── administrativo/
+│       ├── agenda/
+│       ├── emocional/
+│       └── usuarios/
+├── docs/
+│   ├── README.md
+│   ├── api-examples.md
+│   ├── testing-guide.md
+│   └── postman-collection.json
+├── scripts/
+│   ├── jwt-toggle.js
+│   └── fix-validation.js
+├── .env
+├── .gitignore
+├── package-lock.json
+└── package.json
+```
+
+## Tecnologias
+
+- **Node.js** - Runtime de JavaScript
+- **Express.js** - Framework web
+- **MongoDB** - Base de datos NoSQL
+- **Mongoose** - ODM para MongoDB
+- **JWT** - Autenticación
+- **Joi** - Validación de datos
+- **bcryptjs** - Encriptación de contraseñas
+- **Concurrently** - Ejecución paralela de servicios
+
+## JWT Toggle System
+
+Para facilitar el testing y desarrollo, el sistema incluye una utilidad para activar/desactivar JWT:
+
+```bash
+# Desactivar JWT para testing inicial
+node scripts/jwt-toggle.js disable
+
+# Activar JWT para producción
+node scripts/jwt-toggle.js enable
+
+# Ver estado actual
+node scripts/jwt-toggle.js status
+```
+
+Cuando JWT está desactivado (`JWT_DISABLED=true` en `.env`), todos los endpoints protegidos son accesibles sin token de autenticación.
 
 ## Documentación Adicional
 
-- **api-examples.md** - Ejemplos JSON completos para todos los endpoints
-- **testing-guide.md** - Guía de testing y lista de endpoints
-- **postman-collection.json** - Colección de Postman lista para importar
-- **postman-import-guide.md** - Guía para importar la colección de Postman
+- **[api-examples.md](./api-examples.md)** - Ejemplos JSON completos para todos los endpoints
+- **[testing-guide.md](./testing-guide.md)** - Guía de testing y lista de endpoints
+- **[postman-collection.json](./postman-collection.json)** - Colección de Postman lista para importar
 
 ## Características del Sistema
 
 ### Funcionalidades Implementadas
+- ✅ **CRUD Completo** - Todos los modelos tienen operaciones completas
+- ✅ **Auditoría Automática** - Logging de todas las operaciones de datos
+- ✅ **Validación Robusta** - Validación con Joi en todos los endpoints
+- ✅ **Paginación** - Implementada en todos los listados
+- ✅ **Filtrado Avanzado** - Búsqueda y filtros en endpoints de consulta
+- ✅ **Autenticación JWT** - Sistema de tokens con toggle para desarrollo
+- ✅ **Rate Limiting** - Protección contra abuso de API
+- ✅ **CORS Configurado** - Soporte para aplicaciones web
+- ✅ **Manejo de Errores** - Sistema centralizado de manejo de errores
+- ✅ **Health Checks** - Endpoints de salud para monitoreo
 
-- CRUD Completo - Todos los modelos tienen operaciones completas
-- Auditoría Automática - Logging de todas las operaciones de datos
-- Validación Robusta - Validación con Joi en todos los endpoints
-- Paginación - Implementada en todos los listados
-- Filtrado Avanzado - Búsqueda y filtros en endpoints de consulta
-- Autenticación JWT - Sistema de tokens con toggle para desarrollo
-- Rate Limiting - Protección contra abuso de API
-- CORS Configurado - Soporte para aplicaciones web
-- Manejo de Errores - Sistema centralizado de manejo de errores
-- Health Checks - Endpoints de salud para monitoreo
-- Protección de Datos - Prevención de capturas de pantalla en vistas sensibles
-- Selector de Fecha Personalizado - Compatible con web y móvil
-- Validación de Fechas - Rango permitido de hasta 30 días atrás
+### Arquitectura de Microservicios
+- **Usuarios** (3002) - Gestión de usuarios, personas y suscripciones
+- **Administrativo** (3001) - Datos geográficos, configuración y administración
+- **Emocional** (3003) - Diarios emocionales y seguimiento de estado mental
+- **Agenda** (3004) - Citas, diagnósticos y seguimiento de pacientes
 
-### Seguridad
+### Nuevas Funcionalidades Agregadas
+- **17 Nuevos Controladores** creados para completar todos los modelos
+- **Nombres Consistentes** - Todos los controladores coinciden con nombres de modelos
+- **Auditoría Completa** - Endpoints de auditoría para todos los módulos
+- **Tipos de Datos** - Controladores para tipos de notificación, suscripción, variable, etc.
+- **Relaciones Avanzadas** - Gestión de relaciones entre diarios y emociones/sensaciones/síntomas
 
-- Encriptación de contraseñas con bcryptjs
-- Tokens JWT con expiración configurable
-- Middleware de autenticación en rutas protegidas
-- Validación de datos de entrada con Joi
-- Rate limiting para prevenir ataques
-- CORS configurado para orígenes permitidos
-- Prevención de capturas de pantalla en pantallas sensibles (móvil)
+## Notas Importantes
 
-## Licencia
-
-Proyecto propietario - GurgoSoft © 2025
+- Todos los endpoints incluyen paginación donde aplica
+- Se implementa logging de auditoría completo
+- Validación de datos con Joi en todos los endpoints
+- Manejo centralizado de errores
+- Rate limiting para seguridad
+- Soporte para CORS configurado
+- Sistema JWT con toggle para desarrollo y testing
+- Documentación completa con ejemplos JSON y colección Postman

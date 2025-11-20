@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { useRouter } from "expo-router";
 import * as ScreenCapture from 'expo-screen-capture';
 import { 
   getUserProfile, 
@@ -32,6 +32,7 @@ import {
   createSentimiento,
   createTipoEmocion
 } from "../services/api";
+import { getToken } from "../services/auth";
 import NavigationHeader from "../components/NavigationHeader";
 
 type ModalType = 'emocion' | 'sensacion' | 'sintoma' | 'sentimiento' | 'intensidad' | 'otro';
@@ -49,6 +50,8 @@ interface SelectedItem extends EmotionalItem {
 }
 
 export default function DiarioEmocionalScreen() {
+  const router = useRouter();
+  
   // Estados básicos
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,6 +60,7 @@ export default function DiarioEmocionalScreen() {
   // Estados del formulario
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(new Date());
   const [selectedEmocion, setSelectedEmocion] = useState<SelectedItem | null>(null);
   const [selectedSensacion, setSelectedSensacion] = useState<SelectedItem | null>(null);
   const [selectedSintoma, setSelectedSintoma] = useState<SelectedItem | null>(null);
@@ -89,16 +93,16 @@ export default function DiarioEmocionalScreen() {
 
   // Intensidades de 1 a 10
   const intensidades = [
-    { value: 1, label: "Muy bajo" },
-    { value: 2, label: "Bajo" },
-    { value: 3, label: "Leve" },
-    { value: 4, label: "Moderado bajo" },
-    { value: 5, label: "Moderado" },
-    { value: 6, label: "Moderado alto" },
-    { value: 7, label: "Alto" },
-    { value: 8, label: "Muy alto" },
-    { value: 9, label: "Extremo" },
-    { value: 10, label: "Máximo" },
+    { value: 1, label: "Demasiado leve" },
+    { value: 2, label: "Muy leve" },
+    { value: 3, label: "Ligeramente leve" },
+    { value: 4, label: "Leve" },
+    { value: 5, label: "Presuntamente moderado" },
+    { value: 6, label: "Moderado" },
+    { value: 7, label: "Ligeramente intenso" },
+    { value: 8, label: "Intenso" },
+    { value: 9, label: "Bastante intenso" },
+    { value: 10, label: "Demasiado intenso" },
   ];
 
   // Función para mostrar alertas personalizadas
@@ -109,7 +113,158 @@ export default function DiarioEmocionalScreen() {
     setAlertVisible(true);
   };
 
-  // Cargar datos iniciales
+  // Componentes de Modal reutilizables
+  const ModalActions = ({ onCancel, onAccept, acceptDisabled = false, acceptText = 'Aceptar' }: {
+    onCancel: () => void;
+    onAccept: () => void;
+    acceptDisabled?: boolean;
+    acceptText?: string;
+  }) => (
+    <View style={styles.modalActions}>
+      <TouchableOpacity
+        style={[styles.modalButton, styles.modalButtonCancel]}
+        onPress={onCancel}
+      >
+        <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          styles.modalButton,
+          styles.modalButtonAccept,
+          acceptDisabled && styles.modalButtonDisabled
+        ]}
+        onPress={onAccept}
+        disabled={acceptDisabled}
+      >
+        <Text style={styles.modalButtonTextAccept}>{acceptText}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const ModalIntensity = () => (
+    <View style={styles.modalContent}>
+      <Text style={styles.modalSubtitle}>
+        Selecciona la intensidad para: {currentSelection?.nombre}
+      </Text>
+      <FlatList
+        data={intensidades}
+        keyExtractor={(item) => item.value.toString()}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[
+              styles.intensityItem,
+              selectedIntensity === item.value && styles.intensityItemSelected
+            ]}
+            onPress={() => setSelectedIntensity(item.value)}
+          >
+            <Text style={[
+              styles.intensityText,
+              selectedIntensity === item.value && styles.intensityTextSelected
+            ]}>
+              {item.value} - {item.label}
+            </Text>
+          </TouchableOpacity>
+        )}
+        style={styles.modalList}
+      />
+      <ModalActions
+        onCancel={closeModal}
+        onAccept={() => {
+          if (selectedIntensity && currentSelection) {
+            confirmSelection(currentSelection, selectedIntensity);
+          } else {
+            Alert.alert('Campo requerido', 'Debes seleccionar un nivel de intensidad');
+          }
+        }}
+        acceptDisabled={!selectedIntensity}
+      />
+    </View>
+  );
+
+  const ModalCustom = () => (
+    <View style={styles.modalContent}>
+      <TextInput
+        style={styles.customInput}
+        placeholder="Escribe tu respuesta..."
+        value={customText}
+        onChangeText={setCustomText}
+        autoFocus
+      />
+      <ModalActions
+        onCancel={closeModal}
+        onAccept={createCustomItem}
+        acceptDisabled={creatingCustomItem || !customText.trim()}
+        acceptText={creatingCustomItem ? 'Creando...' : 'Crear'}
+      />
+    </View>
+  );
+
+  const ModalSelection = () => (
+    <View style={styles.modalContent}>
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Buscar..."
+        value={modalSearch}
+        onChangeText={setModalSearch}
+      />
+      <FlatList
+        data={getFilteredModalData()}
+        keyExtractor={(item) => item._id}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.modalItem}
+            onPress={() => selectItem(item)}
+          >
+            <Text style={styles.modalItemText}>{item.nombre}</Text>
+            {item.descripcion && (
+              <Text style={styles.modalItemDescription}>{item.descripcion}</Text>
+            )}
+          </TouchableOpacity>
+        )}
+        style={styles.modalList}
+        ItemSeparatorComponent={() => <View style={styles.modalSeparator} />}
+      />
+    </View>
+  );
+
+  // Componente reutilizable para campos de selección
+  const SelectField = ({ 
+    label, 
+    value, 
+    placeholder, 
+    onPress 
+  }: { 
+    label: string; 
+    value: SelectedItem | null; 
+    placeholder: string; 
+    onPress: () => void; 
+  }) => (
+    <View style={styles.fieldContainer}>
+      <Text style={styles.label}>{label} *</Text>
+      <Pressable style={styles.selectButton} onPress={onPress}>
+        <Text style={value ? styles.selectedText : styles.placeholderText}>
+          {value 
+            ? `${value.nombre}${value.intensidad ? ` (${value.intensidad}/10)` : ''}` 
+            : placeholder
+          }
+        </Text>
+        <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
+      </Pressable>
+    </View>
+  );
+
+  // Títulos de modales centralizados
+  const getModalTitle = () => {
+    const titles = {
+      'emocion': '¿Qué emoción tengo?',
+      'sensacion': 'Tengo sensación de',
+      'sintoma': 'Poseo síntomas de',
+      'sentimiento': 'Siento',
+      'intensidad': 'Nivel de intensidad',
+      'otro': 'Escribe tu respuesta'
+    };
+    return titles[modalType as keyof typeof titles] || '';
+  };
   useEffect(() => {
     loadInitialData();
   }, []);
@@ -146,9 +301,43 @@ export default function DiarioEmocionalScreen() {
       setLoading(true);
       
       // Cargar perfil del usuario
+      console.log('🔵 Cargando perfil del usuario...');
       const profile = await getUserProfile();
-      const uid = profile?.data?.usuario?._id || profile?.data?._id;
-      if (uid) setUserId(uid);
+      console.log('📝 Respuesta completa del perfil:', JSON.stringify(profile, null, 2));
+      
+      // Intentar obtener el userId de diferentes ubicaciones posibles
+      let uid = profile?.data?.usuario?._id || 
+                profile?.data?._id || 
+                profile?.usuario?._id || 
+                profile?._id;
+      
+      // Si no se encuentra en la respuesta, intentar decodificar el token JWT
+      if (!uid) {
+        console.log('⚠️ No se encontró userId en la respuesta, intentando decodificar token...');
+        const token = await getToken();
+        if (token) {
+          try {
+            // Decodificar el JWT (solo la parte del payload)
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            console.log('🔓 Payload del token:', payload);
+            uid = payload.userId || payload.id || payload.sub || payload._id;
+            console.log('🎯 userId del token:', uid);
+          } catch (e) {
+            console.error('❌ Error decodificando token:', e);
+          }
+        }
+      }
+      
+      console.log('🎯 userId final extraído:', uid);
+      
+      if (uid) {
+        setUserId(uid);
+        console.log('✅ userId configurado exitosamente:', uid);
+      } else {
+        console.error('⚠️ No se pudo extraer el userId');
+        console.error('Estructura recibida:', profile);
+        showAlert('Advertencia', 'No se pudo obtener tu información de usuario. Por favor, cierra sesión y vuelve a ingresar.', 'warning');
+      }
 
       // Cargar datos en paralelo
       const [emocionesRes, sensacionesRes, sintomasRes, sentimientosRes, tiposEmocionRes] = await Promise.all([
@@ -166,7 +355,7 @@ export default function DiarioEmocionalScreen() {
       setTiposEmocion(tiposEmocionRes?.data || []);
 
     } catch (error) {
-      console.error('Error cargando datos:', error);
+      console.error('❌ Error cargando datos:', error);
       showAlert('Error', 'No se pudieron cargar los datos', 'error');
     } finally {
       setLoading(false);
@@ -188,6 +377,34 @@ export default function DiarioEmocionalScreen() {
   // Formatear fecha para mostrar
   const formatDate = (date: Date): string => {
     return date.toLocaleDateString('es-ES');
+  };
+
+  // Generar días válidos (hoy y hasta un mes atrás)
+  const getValidDates = (): Date[] => {
+    const dates: Date[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Generar 30 días hacia atrás desde hoy
+    for (let i = 0; i <= 30; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      dates.push(date);
+    }
+    
+    return dates;
+  };
+
+  // Abrir modal de fecha
+  const openDatePicker = () => {
+    setTempDate(new Date(selectedDate));
+    setShowDatePicker(true);
+  };
+
+  // Confirmar selección de fecha
+  const confirmDateSelection = () => {
+    setSelectedDate(tempDate);
+    setShowDatePicker(false);
   };
 
   // Manejar cambio de fecha
@@ -217,16 +434,12 @@ export default function DiarioEmocionalScreen() {
   // Abrir modal para seleccionar
   const openModal = (type: ModalType, data: EmotionalItem[]) => {
     setModalType(type);
-    setOriginalModalType(type); // Guardar el tipo original
+    setOriginalModalType(type);
     
     // Agregar opción "Otro" al final de la lista
     const dataWithOtro = [
       ...data,
-      {
-        _id: 'otro',
-        nombre: 'Otro',
-        tipo: 'especial'
-      }
+      { _id: 'otro', nombre: 'Otro', tipo: 'especial' }
     ];
     
     setModalData(dataWithOtro);
@@ -470,19 +683,21 @@ export default function DiarioEmocionalScreen() {
   // Guardar diario
   const handleSave = async () => {
     console.log('🔵 handleSave llamado');
-    console.log('📝 userId:', userId);
-    console.log('📝 validateForm:', validateForm());
+    console.log('📝 userId actual:', userId);
     
     if (!validateForm()) {
       console.log('❌ Validación fallida');
       return;
     }
     
-    // Usar ID temporal si no hay usuario (para desarrollo)
-    const userIdToUse = userId || 'temporal-user-' + Date.now();
-    
     if (!userId) {
-      console.log('⚠️ No hay userId, usando temporal:', userIdToUse);
+      console.error('❌ No hay userId disponible');
+      showAlert(
+        'Error de sesión', 
+        'No se pudo identificar tu usuario. Por favor, cierra sesión y vuelve a ingresar.',
+        'error'
+      );
+      return;
     }
 
     try {
@@ -491,7 +706,7 @@ export default function DiarioEmocionalScreen() {
 
       const payload = {
         diario: {
-          idUsuario: userIdToUse,
+          idUsuario: userId,
           fecha: selectedDate.toISOString(),
           titulo: `Diario del ${formatDate(selectedDate)}`,
           nota: hoySiento.trim(),
@@ -536,6 +751,12 @@ export default function DiarioEmocionalScreen() {
 
       showAlert('Éxito', 'Registro guardado correctamente', 'success');
 
+      // Redirigir al mainMenu después de 2 segundos
+      setTimeout(() => {
+        setAlertVisible(false);
+        router.push('/mainMenu');
+      }, 2000);
+
     } catch (error: any) {
       console.error('❌ Error guardando:', error);
       console.error('❌ Error message:', error?.message);
@@ -549,28 +770,14 @@ export default function DiarioEmocionalScreen() {
 
   // Filtrar datos del modal
   const getFilteredModalData = () => {
-    let baseData = modalData;
-    
-    // Agregar opciones especiales según el tipo
-    if (modalType === 'sensacion') {
-      baseData = [...modalData, { _id: 'no-sensacion', nombre: 'No tengo sensaciones', tipo: 'especial' }];
-    } else if (modalType === 'sintoma') {
-      baseData = [...modalData, { _id: 'no-sintoma', nombre: 'No tengo síntomas', tipo: 'especial' }];
-    } else if (modalType === 'sentimiento') {
-      baseData = [...modalData, { _id: 'no-sentimiento', nombre: 'No siento algo', tipo: 'especial' }];
-    }
-    
-    // Agregar opción "Otro" para todos los tipos
-    baseData = [...baseData, { _id: 'otro', nombre: 'Otro', tipo: 'especial' }];
-
     // Filtrar por búsqueda
     if (modalSearch.trim()) {
-      return baseData.filter(item => 
+      return modalData.filter(item => 
         item.nombre.toLowerCase().includes(modalSearch.toLowerCase())
       );
     }
     
-    return baseData;
+    return modalData;
   };
 
   if (loading) {
@@ -598,67 +805,43 @@ export default function DiarioEmocionalScreen() {
           {/* Fecha */}
           <View style={styles.fieldContainer}>
             <Text style={styles.label}>Fecha *</Text>
-            <Pressable style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
+            <Pressable style={styles.dateButton} onPress={openDatePicker}>
               <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
               <MaterialCommunityIcons name="calendar" size={20} color="#5E4AE3" />
             </Pressable>
           </View>
 
           {/* Emoción */}
-          <View style={styles.fieldContainer}>
-            <Text style={styles.label}>¿Qué emoción tengo? *</Text>
-            <Pressable 
-              style={styles.selectButton} 
-              onPress={() => openModal('emocion', emociones)}
-            >
-              <Text style={selectedEmocion ? styles.selectedText : styles.placeholderText}>
-                {selectedEmocion ? `${selectedEmocion.nombre}${selectedEmocion.intensidad ? ` (${selectedEmocion.intensidad}/10)` : ''}` : 'Seleccionar emoción'}
-              </Text>
-              <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
-            </Pressable>
-          </View>
+          <SelectField
+            label="¿Qué emoción tengo?"
+            value={selectedEmocion}
+            placeholder="Seleccionar emoción"
+            onPress={() => openModal('emocion', emociones)}
+          />
 
           {/* Sensación */}
-          <View style={styles.fieldContainer}>
-            <Text style={styles.label}>Tengo sensación de *</Text>
-            <Pressable 
-              style={styles.selectButton} 
-              onPress={() => openModal('sensacion', sensaciones)}
-            >
-              <Text style={selectedSensacion ? styles.selectedText : styles.placeholderText}>
-                {selectedSensacion ? `${selectedSensacion.nombre}${selectedSensacion.intensidad ? ` (${selectedSensacion.intensidad}/10)` : ''}` : 'Seleccionar sensación'}
-              </Text>
-              <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
-            </Pressable>
-          </View>
+          <SelectField
+            label="Tengo sensación de"
+            value={selectedSensacion}
+            placeholder="Seleccionar sensación"
+            onPress={() => openModal('sensacion', sensaciones)}
+          />
 
           {/* Síntomas */}
-          <View style={styles.fieldContainer}>
-            <Text style={styles.label}>Poseo síntomas de *</Text>
-            <Pressable 
-              style={styles.selectButton} 
-              onPress={() => openModal('sintoma', sintomas)}
-            >
-              <Text style={selectedSintoma ? styles.selectedText : styles.placeholderText}>
-                {selectedSintoma ? `${selectedSintoma.nombre}${selectedSintoma.intensidad ? ` (${selectedSintoma.intensidad}/10)` : ''}` : 'Seleccionar síntoma'}
-              </Text>
-              <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
-            </Pressable>
-          </View>
+          <SelectField
+            label="Poseo síntomas de"
+            value={selectedSintoma}
+            placeholder="Seleccionar síntoma"
+            onPress={() => openModal('sintoma', sintomas)}
+          />
 
           {/* Sentimientos */}
-          <View style={styles.fieldContainer}>
-            <Text style={styles.label}>Siento *</Text>
-            <Pressable 
-              style={styles.selectButton} 
-              onPress={() => openModal('sentimiento', sentimientos)}
-            >
-              <Text style={selectedSentimiento ? styles.selectedText : styles.placeholderText}>
-                {selectedSentimiento ? `${selectedSentimiento.nombre}${selectedSentimiento.intensidad ? ` (${selectedSentimiento.intensidad}/10)` : ''}` : 'Seleccionar sentimiento'}
-              </Text>
-              <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
-            </Pressable>
-          </View>
+          <SelectField
+            label="Siento"
+            value={selectedSentimiento}
+            placeholder="Seleccionar sentimiento"
+            onPress={() => openModal('sentimiento', sentimientos)}
+          />
 
           {/* Hoy siento */}
           <View style={styles.fieldContainer}>
@@ -699,151 +882,81 @@ export default function DiarioEmocionalScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {modalType === 'emocion' && '¿Qué emoción tengo?'}
-                {modalType === 'sensacion' && 'Tengo sensación de'}
-                {modalType === 'sintoma' && 'Poseo síntomas de'}
-                {modalType === 'sentimiento' && 'Siento'}
-                {modalType === 'intensidad' && 'Nivel de intensidad'}
-                {modalType === 'otro' && 'Escribe tu respuesta'}
-              </Text>
+              <Text style={styles.modalTitle}>{getModalTitle()}</Text>
               <TouchableOpacity onPress={closeModal}>
                 <MaterialCommunityIcons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
 
             {modalType === 'intensidad' ? (
-              // Modal de intensidad
-              <View style={styles.modalContent}>
-                <Text style={styles.modalSubtitle}>
-                  Selecciona la intensidad para: {currentSelection?.nombre}
-                </Text>
-                <FlatList
-                  data={intensidades}
-                  keyExtractor={(item) => item.value.toString()}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={[
-                        styles.intensityItem,
-                        selectedIntensity === item.value && styles.intensityItemSelected
-                      ]}
-                      onPress={() => setSelectedIntensity(item.value)}
-                    >
-                      <Text style={[
-                        styles.intensityText,
-                        selectedIntensity === item.value && styles.intensityTextSelected
-                      ]}>
-                        {item.value} - {item.label}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  style={styles.modalList}
-                />
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalButtonCancel]}
-                    onPress={closeModal}
-                  >
-                    <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.modalButton, 
-                      styles.modalButtonAccept,
-                      !selectedIntensity && styles.modalButtonDisabled
-                    ]}
-                    onPress={() => {
-                      if (selectedIntensity && currentSelection) {
-                        confirmSelection(currentSelection, selectedIntensity);
-                      } else {
-                        Alert.alert('Campo requerido', 'Debes seleccionar un nivel de intensidad');
-                      }
-                    }}
-                    disabled={!selectedIntensity}
-                  >
-                    <Text style={styles.modalButtonTextAccept}>Aceptar</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <ModalIntensity />
             ) : modalType === 'otro' ? (
-              // Modal de texto personalizado
-              <View style={styles.modalContent}>
-                <TextInput
-                  style={styles.customInput}
-                  placeholder="Escribe tu respuesta..."
-                  value={customText}
-                  onChangeText={setCustomText}
-                  autoFocus
-                />
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalButtonCancel]}
-                    onPress={closeModal}
-                  >
-                    <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.modalButton, 
-                      styles.modalButtonAccept,
-                      (creatingCustomItem || !customText.trim()) && styles.modalButtonDisabled
-                    ]}
-                    onPress={createCustomItem}
-                    disabled={creatingCustomItem || !customText.trim()}
-                  >
-                    <Text style={styles.modalButtonTextAccept}>
-                      {creatingCustomItem ? 'Creando...' : 'Crear'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <ModalCustom />
             ) : (
-              // Modal de selección de items
-              <View style={styles.modalContent}>
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Buscar..."
-                  value={modalSearch}
-                  onChangeText={setModalSearch}
-                />
-                <FlatList
-                  data={getFilteredModalData()}
-                  keyExtractor={(item) => item._id}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.modalItem}
-                      onPress={() => selectItem(item)}
-                    >
-                      <Text style={styles.modalItemText}>{item.nombre}</Text>
-                      {item.descripcion && (
-                        <Text style={styles.modalItemDescription}>{item.descripcion}</Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                  style={styles.modalList}
-                  ItemSeparatorComponent={() => <View style={styles.modalSeparator} />}
-                />
-              </View>
+              <ModalSelection />
             )}
           </View>
         </View>
       </Modal>
 
-      {/* DateTimePicker */}
-      {showDatePicker && (
-        <DateTimePicker
-          value={selectedDate}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={onDateChange}
-          maximumDate={new Date()}
-          minimumDate={(() => {
-            const oneMonthAgo = new Date();
-            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-            return oneMonthAgo;
-          })()}
-        />
-      )}
+      {/* Modal de selección de fecha */}
+      <Modal visible={showDatePicker} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Seleccionar Fecha</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                <MaterialCommunityIcons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalContent}>
+              <Text style={styles.modalSubtitle}>
+                Puedes seleccionar desde hoy hasta un mes atrás
+              </Text>
+              <ScrollView style={styles.dateList}>
+                {getValidDates().map((date, index) => {
+                  const isSelected = date.toDateString() === tempDate.toDateString();
+                  const isToday = date.toDateString() === new Date().toDateString();
+                  
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.dateItem,
+                        isSelected && styles.dateItemSelected
+                      ]}
+                      onPress={() => setTempDate(date)}
+                    >
+                      <Text style={[
+                        styles.dateItemText,
+                        isSelected && styles.dateItemTextSelected
+                      ]}>
+                        {formatDate(date)}
+                        {isToday && ' (Hoy)'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonAccept]}
+                  onPress={confirmDateSelection}
+                >
+                  <Text style={styles.modalButtonTextAccept}>Aceptar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Alerta Personalizada */}
       <Modal
@@ -1104,6 +1217,28 @@ const styles = StyleSheet.create({
   modalButtonTextAccept: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  // Estilos para modal de fecha
+  dateList: {
+    maxHeight: 400,
+    marginBottom: 16,
+  },
+  dateItem: {
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#f8f9fa',
+  },
+  dateItemSelected: {
+    backgroundColor: '#5E4AE3',
+  },
+  dateItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  dateItemTextSelected: {
+    color: '#fff',
     fontWeight: '600',
   },
   // Estilos de alerta personalizada
