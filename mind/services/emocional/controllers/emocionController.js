@@ -14,6 +14,7 @@ class EmocionController {
 
       const emociones = await Emocion.find(filter)
         .populate('idTipoEmocion', 'codigo nombre')
+        .populate('imagenId', 'tipo url metadata')
         .sort({ nombre: 1 })
         ;
 
@@ -34,7 +35,8 @@ class EmocionController {
   static async getById(req, res) {
     try {
       const emocion = await Emocion.findById(req.params.id)
-        .populate('idTipoEmocion', 'codigo nombre');
+        .populate('idTipoEmocion', 'codigo nombre')
+        .populate('imagenId', 'tipo url metadata');
       
       if (!emocion) {
         return res.status(404).json({

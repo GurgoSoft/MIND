@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
   StatusBar,
+  Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -35,7 +36,7 @@ import {
 import { getToken } from "../services/auth";
 import NavigationHeader from "../components/NavigationHeader";
 
-type ModalType = 'emocion' | 'sensacion' | 'sintoma' | 'sentimiento' | 'intensidad' | 'otro';
+type ModalType = 'emocion' | 'sensacion' | 'sintoma' | 'sentimiento' | 'intensidad' | 'otro' | 'confirmacion';
 
 interface EmotionalItem {
   _id: string;
@@ -43,11 +44,35 @@ interface EmotionalItem {
   descripcion?: string;
   tipo?: string;
   codigo?: string;
+  imagenId?: {
+    _id: string;
+    url: string;
+    tipo: string;
+    metadata?: {
+      size?: number;
+      width?: number;
+      height?: number;
+      format?: string;
+    };
+  };
 }
 
 interface SelectedItem extends EmotionalItem {
   intensidad?: number;
 }
+
+// Mapeo de imágenes locales para emociones
+const emotionImagesMap: { [key: string]: any } = {
+  'abandonado.png': require('../assets/abandonado.png'),
+  'aceptado.png': require('../assets/aceptado.png'),
+};
+
+// Función para obtener la imagen local
+const getEmotionImage = (imageUrl?: string) => {
+  if (!imageUrl) return null;
+  const fileName = imageUrl.split('/').pop();
+  return fileName ? emotionImagesMap[fileName] : null;
+};
 
 export default function DiarioEmocionalScreen() {
   const router = useRouter();
@@ -111,6 +136,45 @@ export default function DiarioEmocionalScreen() {
     setAlertMessage(message);
     setAlertType(type);
     setAlertVisible(true);
+  };
+
+  // Función para obtener imagen de emoción
+  const emotionImagesMap: { [key: string]: any } = {
+    'abandonado.png': require('../assets/abandonado.png'),
+    'aceptado.png': require('../assets/aceptado.png'),
+    // También mapear sin la extensión por si acaso
+    'abandonado': require('../assets/abandonado.png'),
+    'aceptado': require('../assets/aceptado.png'),
+  };
+
+  const getEmotionImage = (imageUrl?: string) => {
+    console.log('🔍 getEmotionImage llamada con:', imageUrl);
+    if (!imageUrl) {
+      console.log('❌ No hay imageUrl');
+      return null;
+    }
+    
+    // Intentar obtener el nombre del archivo
+    const fileName = imageUrl.split('/').pop();
+    console.log('📁 Nombre de archivo extraído:', fileName);
+    
+    if (!fileName) {
+      console.log('❌ No se pudo extraer el nombre del archivo');
+      return null;
+    }
+    
+    // Buscar en el mapa
+    const image = emotionImagesMap[fileName];
+    console.log('🖼️ Imagen encontrada en el mapa:', image ? 'Sí' : 'No');
+    
+    // Si no se encuentra con extensión, intentar sin extensión
+    if (!image && fileName.includes('.')) {
+      const fileNameWithoutExt = fileName.split('.')[0];
+      console.log('🔄 Intentando sin extensión:', fileNameWithoutExt);
+      return emotionImagesMap[fileNameWithoutExt] || null;
+    }
+    
+    return image || null;
   };
 
   // Componentes de Modal reutilizables
@@ -181,6 +245,61 @@ export default function DiarioEmocionalScreen() {
     </View>
   );
 
+  const ModalConfirmacion = () => {
+    // Intentar obtener la imagen desde imagenId, o directamente desde el nombre
+    let localImage = getEmotionImage(currentSelection?.imagenId?.url);
+    
+    // Si no hay imagen desde imagenId, intentar mapear directamente por nombre
+    if (!localImage && currentSelection?.nombre) {
+      const nombreLower = currentSelection.nombre.toLowerCase();
+      if (nombreLower === 'abandonado') {
+        localImage = require('../assets/abandonado.png');
+      } else if (nombreLower === 'aceptado') {
+        localImage = require('../assets/aceptado.png');
+      }
+    }
+    
+    console.log('🖼️ ModalConfirmacion - currentSelection:', currentSelection);
+    console.log('🖼️ ModalConfirmacion - imagenId:', currentSelection?.imagenId);
+    console.log('🖼️ ModalConfirmacion - url:', currentSelection?.imagenId?.url);
+    console.log('🖼️ ModalConfirmacion - localImage:', localImage);
+    
+    return (
+      <View style={styles.modalContent}>
+        <View style={styles.confirmacionContainer}>
+          <View style={styles.confirmacionImageContainer}>
+            {localImage ? (
+              <Image
+                source={localImage}
+                style={styles.confirmacionImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <MaterialCommunityIcons 
+                name="emoticon-happy-outline" 
+                size={80} 
+                color="#5E4AE3" 
+              />
+            )}
+          </View>
+          <Text style={styles.confirmacionTitle}>{currentSelection?.nombre}</Text>
+          {currentSelection?.descripcion && (
+            <Text style={styles.confirmacionDescription}>{currentSelection.descripcion}</Text>
+          )}
+        </View>
+        <ModalActions
+          onCancel={closeModal}
+          onAccept={() => {
+            // Pasar al modal de intensidad
+            setModalType('intensidad');
+            setSelectedIntensity(null);
+          }}
+          acceptText="Continuar"
+        />
+      </View>
+    );
+  };
+
   const ModalCustom = () => (
     <View style={styles.modalContent}>
       <TextInput
@@ -210,17 +329,31 @@ export default function DiarioEmocionalScreen() {
       <FlatList
         data={getFilteredModalData()}
         keyExtractor={(item) => item._id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.modalItem}
-            onPress={() => selectItem(item)}
-          >
-            <Text style={styles.modalItemText}>{item.nombre}</Text>
-            {item.descripcion && (
-              <Text style={styles.modalItemDescription}>{item.descripcion}</Text>
-            )}
-          </TouchableOpacity>
-        )}
+        renderItem={({ item }) => {
+          const localImage = getEmotionImage(item.imagenId?.url);
+          return (
+            <TouchableOpacity
+              style={styles.modalItem}
+              onPress={() => selectItem(item)}
+            >
+              <View style={styles.modalItemContent}>
+                {localImage && (
+                  <Image
+                    source={localImage}
+                    style={styles.modalItemImage}
+                    resizeMode="contain"
+                  />
+                )}
+                <View style={styles.modalItemTextContainer}>
+                  <Text style={styles.modalItemText}>{item.nombre}</Text>
+                  {item.descripcion && (
+                    <Text style={styles.modalItemDescription}>{item.descripcion}</Text>
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
         style={styles.modalList}
         ItemSeparatorComponent={() => <View style={styles.modalSeparator} />}
       />
@@ -261,7 +394,8 @@ export default function DiarioEmocionalScreen() {
       'sintoma': 'Poseo síntomas de',
       'sentimiento': 'Siento',
       'intensidad': 'Nivel de intensidad',
-      'otro': 'Escribe tu respuesta'
+      'otro': 'Escribe tu respuesta',
+      'confirmacion': 'Has seleccionado'
     };
     return titles[modalType as keyof typeof titles] || '';
   };
@@ -347,6 +481,9 @@ export default function DiarioEmocionalScreen() {
         listSentimientos(),
         listTiposEmocion()
       ]);
+
+      console.log('🎨 Emociones recibidas:', emocionesRes?.data);
+      console.log('🖼️ Emociones con imagen:', emocionesRes?.data?.filter((e: any) => e.imagenId));
 
       setEmociones(emocionesRes?.data || []);
       setSensaciones(sensacionesRes?.data || []);
@@ -473,10 +610,10 @@ export default function DiarioEmocionalScreen() {
     }
     
     setCurrentSelection(item);
-    // Si no es una opción negativa, pedir intensidad
+    // Si no es una opción negativa, mostrar confirmación y luego pedir intensidad
     if (!item.nombre.toLowerCase().includes('no tengo') && 
         !item.nombre.toLowerCase().includes('no siento')) {
-      setModalType('intensidad');
+      setModalType('confirmacion');
     } else {
       // Confirmar selección sin intensidad
       confirmSelection(item, null);
@@ -892,6 +1029,8 @@ export default function DiarioEmocionalScreen() {
               <ModalIntensity />
             ) : modalType === 'otro' ? (
               <ModalCustom />
+            ) : modalType === 'confirmacion' ? (
+              <ModalConfirmacion />
             ) : (
               <ModalSelection />
             )}
@@ -1149,6 +1288,19 @@ const styles = StyleSheet.create({
   modalItem: {
     padding: 16,
   },
+  modalItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalItemImage: {
+    width: 40,
+    height: 40,
+    marginRight: 12,
+    borderRadius: 8,
+  },
+  modalItemTextContainer: {
+    flex: 1,
+  },
   modalItemText: {
     fontSize: 16,
     color: '#333',
@@ -1177,6 +1329,33 @@ const styles = StyleSheet.create({
   },
   intensityTextSelected: {
     color: '#fff',
+  },
+  // Estilos para modal de confirmación
+  confirmacionContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  confirmacionImageContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  confirmacionImage: {
+    width: 200,
+    height: 200,
+  },
+  confirmacionTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  confirmacionDescription: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   customInput: {
     borderWidth: 1,

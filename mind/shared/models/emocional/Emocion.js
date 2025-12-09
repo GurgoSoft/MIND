@@ -20,6 +20,11 @@ const emocionSchema = new mongoose.Schema({
   descripcion: {
     type: String,
     trim: true
+  },
+  imagenId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ImagenSistema',
+    required: false
   }
 }, {
   timestamps: true,
